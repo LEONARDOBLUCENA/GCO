@@ -146,6 +146,7 @@ const RELATORIOS = {
   bloco: { nome: 'Bloco', aba: 'Bloco', chaves: ['BLOCO'] },
   pagos: { nome: 'Pagos', aba: 'Pagos', chaves: ['PAGO'] }
 };
+const RELS_PRODUCAO = ['consultas', 'exames', 'cirurgias_procedimentos', 'lentes', 'bloco'];
 const AREAS = [
   ['consultas', 'Consultas'], ['exames', 'Exames'], ['cirurgias', 'Cirurgias'], ['procedimentos', 'Procedimentos'], ['lentes', 'Lentes']
 ];
@@ -244,13 +245,15 @@ function criarMotor(P) {
     const comissao = (l['COMERCIAL'] != null && String(l['COMERCIAL']).trim() !== '') ? P.comissaoPct * (caixa + conv) : 0;
     const maquina = (area === 'exames' && ehMaquina(item)) ? P.maquina.pct * liquido : 0;
     const clinica = base - executor - comissao - maquina;
-    return { rel, area, tipo, grupo: grupoConvenio(l['CONVÊNIO']), data: l['DATA_ATENDIMENTO'], item, convenio: l['CONVÊNIO'],
+    return { rel, area, tipo, grupo: grupoConvenio(l['CONVÊNIO']), data: l['DATA_ATENDIMENTO'], item, convenio: l['CONVÊNIO'], paciente: l['PACIENTE'] || '',
       resp, sol, solDaCasa: ehDaCasa(sol), caixa, conv, bruto: caixa + conv, imposto, cartao, insumo, liquido,
       repSol, base, pct, executor, comissao, maquina, clinica, executorTotvs: num(l['REPASSE_MÉDICO_EXECUTOR']) };
   }
   function bloco(l) {
     const caixa = num(l['CAIXA']), conv = num(l['VALOR_CONVENIO']);
-    return { resp: UP(l['MEDICO_RESPONSAVEL']).trim(), data: l['DATA_ATENDIMENTO'], caixa, conv, bruto: caixa + conv, grupo: grupoConvenio(l['CONVENIO']) };
+    return { rel: 'bloco', area: 'bloco', resp: UP(l['MEDICO_RESPONSAVEL']).trim(), sol: UP(l['MEDICO_SOLICITANTE']).trim(), data: l['DATA_ATENDIMENTO'], item: l['ITEM'],
+      paciente: l['PACIENTE'] || l['NOMEPACIENTE'] || '', convenio: l['CONVENIO'], caixa, conv, bruto: caixa + conv, grupo: grupoConvenio(l['CONVENIO']),
+      imposto: 0, cartao: 0, insumo: 0, liquido: caixa + conv, repSol: 0, base: 0, pct: 0, executor: 0, comissao: 0, maquina: 0, clinica: caixa + conv };
   }
   function grupoPago(p) {
     const texto = [p['Tipo do Documento'], p['Nome'], p['Histórico'], p['CENTRO DE CUSTOS'] ?? p['Centro de custos'] ?? ''].join(' | ');
@@ -367,7 +370,7 @@ const DB = (() => {
    ESTADO E UI
    ===================================================================== */
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-const S = { premissas: null, api: { url: '', token: '', auto: false }, per: null, periodo: null, calc: null, area: 'todas', filtroPagos: 'todos' };
+const S = { fRel: 'todos', fMed: 'todos', fPapel: 'ambos', fBusca: '', premissas: null, api: { url: '', token: '', auto: false }, per: null, periodo: null, calc: null, area: 'todas', filtroPagos: 'todos' };
 const fmt = v => (Math.abs(v) < 0.005 ? '-' : v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const fmtP = v => (v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -560,7 +563,13 @@ function renderPagos() {
   const pg = S.calc.pagos.filter(p => p.noPeriodo);
   const f = S.filtroPagos; const lista = pg.filter(p => f === 'todos' || p.secao === f || p.grupo === f);
   const porG = {}; pg.forEach(p => { porG[p.grupo] = (porG[p.grupo] || 0) + p.valor; });
-  const html = `<div class="card"><h2>Pagos do período (${pg.length} baixas · R$ ${fmt(pg.reduce((a, p) => a + p.valor, 0))})</h2>
+  const dp = S.periodo.dados.pagos || [];
+  const html = `<div class="card"><h2>Importar Pagos — ${MESES[S.per.mes - 1]}/${S.per.ano}</h2><div class="row">
+      <label class="btn sm">Escolher arquivo<input type="file" id="arqPagos" accept=".xls,.xlsx" hidden></label>
+      <span>${dp.length} linhas · ${esc((S.periodo.origem || {}).pagos || '—')}</span> ${confRel('pagos')}
+      ${dp.length ? '<button class="btn sm sec" id="limpaPagos">limpar</button>' : ''}</div>
+      <p class="muted">Relatório de contas pagas do Totvs. Só entram as baixas feitas dentro do mês selecionado.</p></div>
+    <div class="card"><h2>Pagos do período (${pg.length} baixas · R$ ${fmt(pg.reduce((a, p) => a + p.valor, 0))})</h2>
     <div class="chips" id="chipsPg">${['todos', 'Despesa', 'Dívida', 'Fora', 'Verificar'].map(x => `<button data-f="${x}" class="${f === x ? 'on' : ''}">${x === 'todos' ? 'Todos' : x}</button>`).join('')}</div>
     <h3>Por grupo</h3><div class="tw"><table><tr><th style="text-align:left">Grupo</th><th>Seção</th><th>Valor</th></tr>
       ${Object.entries(porG).sort((a, b) => b[1] - a[1]).map(([g, v]) => `<tr><td>${esc(g)}</td><td>${esc(criarMotor(S.premissas).secaoPago(g))}</td>${td(v)}</tr>`).join('')}</table></div>
@@ -570,6 +579,8 @@ function renderPagos() {
     </table></div><p class="muted">Para mudar o grupo de um pagamento, inclua uma palavra do Nome/Histórico em Premissas → Regras dos pagos (vale a última regra que servir).</p></div>`;
   const el = document.getElementById('t-pagos'); el.innerHTML = html;
   el.querySelectorAll('#chipsPg button').forEach(b => b.onclick = () => { S.filtroPagos = b.dataset.f; renderPagos(); });
+  el.querySelector('#arqPagos').onchange = e => importarArquivos([...e.target.files], 'pagos');
+  const lp = el.querySelector('#limpaPagos'); if (lp) lp.onclick = async () => { delete S.periodo.dados.pagos; delete S.periodo.totais.pagos; await salvarPeriodo(); recalcular(); aba('pagos'); };
 }
 
 /* ---------- PREMISSAS (editáveis) ---------- */
@@ -654,23 +665,26 @@ function gruposPagosTodos() {
 }
 
 /* ---------- DADOS E INTEGRAÇÃO ---------- */
-function renderDados() {
-  const d = S.periodo.dados, t = S.periodo.totais || {}, o = S.periodo.origem || {};
-  const conf = (rel) => { const tg = t[rel]; if (!tg) return '<span class="muted">—</span>';
+function confRel(rel) {
+  const d = S.periodo.dados, t = S.periodo.totais || {}; const tg = t[rel]; if (!tg) return '<span class="muted">—</span>';
     const campos = rel === 'pagos' ? [['Baixado Total', 'Baixado Total']] : rel === 'bloco' ? [['CAIXA', 'CAIXA'], ['VALOR_CONVENIO', 'VALOR_CONVENIO']] : [['CAIXA', 'CAIXA'], ['VALOR_A_RECEBER_CONVÊNIO', 'VALOR_A_RECEBER_CONVÊNIO'], ['LÍQUIDO', 'LÍQUIDO']];
     return campos.map(([k]) => { const s = (d[rel] || []).reduce((a, l) => a + num(l[k]), 0); const ok = Math.abs(s - num(tg[k])) < 0.05;
-      return `<span class="tag ${ok ? '' : 'bad'}">${k.split('_')[0]} ${ok ? 'OK' : fmt(s) + ' ≠ ' + fmt(num(tg[k]))}</span>`; }).join(' '); };
+      return `<span class="tag ${ok ? '' : 'bad'}">${k.split('_')[0]} ${ok ? 'OK' : fmt(s) + ' ≠ ' + fmt(num(tg[k]))}</span>`; }).join(' ');
+}
+function renderDados() {
+  const d = S.periodo.dados, o = S.periodo.origem || {}, conf = confRel;
   const html = `
   <div class="card"><h2>Relatórios do Totvs — ${MESES[S.per.mes - 1]}/${S.per.ano}</h2>
     <p class="muted">Exporte do Totvs e escolha o arquivo de cada relatório (.xls ou .xlsx). Ao importar, o relatório substitui o anterior deste mês.</p>
     <div class="tw"><table><tr><th style="text-align:left">Relatório</th><th>Arquivo</th><th>Linhas</th><th style="text-align:left">Origem</th><th style="text-align:left">Conferência com o "Total Geral"</th><th></th></tr>
-      ${Object.entries(RELATORIOS).map(([k, r]) => `<tr><td><b>${r.nome}</b></td>
+      ${RELS_PRODUCAO.map(k => [k, RELATORIOS[k]]).map(([k, r]) => `<tr><td><b>${r.nome}</b></td>
         <td><label class="btn sm">Escolher arquivo<input type="file" data-rel="${k}" accept=".xls,.xlsx" hidden></label></td>
         <td class="n">${(d[k] || []).length}</td><td>${esc(o[k] || '—')}</td><td>${conf(k)}</td>
         <td>${(d[k] || []).length ? `<button class="btn sm sec" data-limpa="${k}">limpar</button>` : ''}</td></tr>`).join('')}
     </table></div>
-    <div class="row" style="margin-top:10px"><label class="btn sec">Importar a planilha do fechamento inteira (abas Consultas, Exames, Cirurgia e Procedimentos, Lentes, Bloco, Pagos)<input type="file" id="arq" accept=".xlsx" hidden></label></div>
-    <p class="muted">Os dados ficam guardados neste navegador, por mês. Integração automática pela API do Totvs: em breve.</p></div>
+    <div class="row" style="margin-top:10px"><label class="btn sec">Importar a planilha do fechamento inteira (abas Consultas, Exames, Cirurgia e Procedimentos, Lentes, Bloco e Pagos)<input type="file" id="arq" accept=".xlsx" hidden></label></div>
+    <p class="muted">Os Pagos são importados na aba Pagos. Os dados ficam guardados neste navegador, por mês. Integração automática pela API do Totvs: em breve.</p></div>
+  ${htmlDadosImportados()}
 
   <div class="card"><h2>Backup completo</h2><div class="row">
     <button class="btn" id="bkExp">Exportar tudo (JSON)</button><label class="btn sec">Importar backup<input type="file" id="bkImp" accept=".json" hidden></label></div></div>`;
@@ -678,9 +692,87 @@ function renderDados() {
   el.querySelector('#arq').onchange = e => importarArquivos([...e.target.files]);
   el.querySelectorAll('[data-rel]').forEach(i => i.onchange = e => importarArquivos([...e.target.files], i.dataset.rel));
   el.querySelectorAll('[data-limpa]').forEach(b => b.onclick = async () => { delete S.periodo.dados[b.dataset.limpa]; delete S.periodo.totais[b.dataset.limpa]; await salvarPeriodo(); recalcular(); aba('dados'); });
+  ligarDadosImportados(el);
   el.querySelector('#bkExp').onclick = async () => { const ks = await DB.keys(); const o = {}; for (const k of ks) if (k !== 'api') o[k] = await DB.get(k); baixar('backup-bi-gco.json', JSON.stringify(o)); };
   el.querySelector('#bkImp').onchange = async e => { try { const o = JSON.parse(await e.target.files[0].text()); for (const [k, v] of Object.entries(o)) await DB.set(k, v);
     S.premissas = (await DB.get('premissas')) || S.premissas; await trocarPeriodo(); aba('dados'); } catch (x) { alert('Backup inválido'); } };
+}
+/* ---------- dados importados + relatório por médico ---------- */
+const AREA_NOME = { consultas: 'Consultas', exames: 'Exames', cirurgias: 'Cirurgias', procedimentos: 'Procedimentos', lentes: 'Lentes', bloco: 'Bloco' };
+function linhasFiltradas() {
+  const c = S.calc; const todas = [...c.linhas, ...c.bloco];
+  const q = UP(S.fBusca).trim();
+  return todas.filter(r => {
+    if (S.fRel !== 'todos' && r.rel !== S.fRel) return false;
+    if (S.fMed !== 'todos') {
+      const eResp = r.resp === S.fMed, eSol = r.sol === S.fMed && r.sol !== r.resp;
+      if (S.fPapel === 'resp' && !eResp) return false;
+      if (S.fPapel === 'sol' && !eSol) return false;
+      if (S.fPapel === 'ambos' && !eResp && !eSol) return false;
+    }
+    if (q && !UP([r.paciente, r.item, r.convenio, r.resp, r.sol].join(' ')).includes(q)) return false;
+    return true;
+  }).sort((a, b) => (a.data > b.data ? 1 : a.data < b.data ? -1 : 0));
+}
+function htmlDadosImportados() {
+  const ms = Object.keys(S.premissas.medicos), L = linhasFiltradas(), lim = 800;
+  const sm = k => L.reduce((a, r) => a + (r[k] || 0), 0);
+  const papel = r => S.fMed === 'todos' ? '' : (r.resp === S.fMed ? '<span class="tag">responsável</span>' : '<span class="tag warn">solicitante</span>');
+  const recebe = r => S.fMed === 'todos' ? r.executor : (r.resp === S.fMed ? r.executor : r.repSol);
+  return `<div class="card"><h2>Dados importados (${L.length} linhas)</h2>
+    <div class="row"><b>Relatório</b><select class="txt" id="fRel"><option value="todos">Todos</option>${RELS_PRODUCAO.map(k => `<option value="${k}" ${S.fRel === k ? 'selected' : ''}>${RELATORIOS[k].nome}</option>`).join('')}</select>
+      <b>Médico</b><select class="txt" id="fMed"><option value="todos">Todos</option>${ms.map(m => `<option ${S.fMed === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
+      <b>Papel</b><select class="txt" id="fPapel">${[['ambos', 'Responsável e solicitante'], ['resp', 'Só responsável'], ['sol', 'Só solicitante']].map(([v, n]) => `<option value="${v}" ${S.fPapel === v ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <input class="txt" id="fBusca" placeholder="buscar paciente, item, convênio…" value="${esc(S.fBusca)}" style="width:240px">
+      <button class="btn sm" id="btnRelMed" ${S.fMed === 'todos' ? 'disabled' : ''}>Baixar relatório do médico (.xlsx)</button>
+      <button class="btn sm sec" id="btnRelTodos">Baixar relatório de todos os médicos</button></div>
+    <div class="tw"><table>
+      <tr><th>Data</th><th>Área</th><th style="text-align:left">Paciente</th><th style="text-align:left">Convênio</th><th style="text-align:left">Item</th><th style="text-align:left">Responsável</th><th style="text-align:left">Solicitante</th>
+        ${S.fMed !== 'todos' ? '<th>Papel</th>' : ''}<th>Bruto</th><th>Líquido</th><th>Rep. solicitante</th><th>Base</th><th>%</th><th>Rep. executor</th>${S.fMed !== 'todos' ? '<th>Médico recebe</th>' : ''}<th>Clínica</th></tr>
+      ${L.slice(0, lim).map(r => `<tr><td>${esc(String(r.data).split('-').reverse().join('/'))}</td><td>${AREA_NOME[r.area] || ''}${r.tipo && r.tipo !== 'Lente' ? ' · ' + r.tipo : ''}</td>
+        <td>${esc(r.paciente)}</td><td>${esc(r.convenio)}</td><td style="white-space:normal;min-width:220px">${esc(r.item)}</td><td>${esc(r.resp)}</td><td>${esc(r.sol)}</td>
+        ${S.fMed !== 'todos' ? `<td>${papel(r)}</td>` : ''}${td(r.bruto)}${td(r.liquido)}${td(r.repSol)}${td(r.base)}<td class="n pct">${r.pct ? fmtP(r.pct) : '-'}</td>${td(r.executor)}
+        ${S.fMed !== 'todos' ? td(recebe(r), 'b') : ''}${td(r.clinica)}</tr>`).join('')}
+      <tr class="tot"><td colspan="${S.fMed !== 'todos' ? 8 : 7}">Total (${L.length} linhas)</td>${td(sm('bruto'))}${td(sm('liquido'))}${td(sm('repSol'))}${td(sm('base'))}<td></td>${td(sm('executor'))}
+        ${S.fMed !== 'todos' ? td(L.reduce((a, r) => a + recebe(r), 0)) : ''}${td(sm('clinica'))}</tr>
+    </table></div>${L.length > lim ? `<p class="muted">Mostrando as primeiras ${lim} linhas; use os filtros. O relatório em Excel traz todas.</p>` : ''}</div>`;
+}
+function ligarDadosImportados(el) {
+  const go = () => { renderDados(); aba('dados'); };
+  el.querySelector('#fRel').onchange = e => { S.fRel = e.target.value; go(); };
+  el.querySelector('#fMed').onchange = e => { S.fMed = e.target.value; go(); };
+  el.querySelector('#fPapel').onchange = e => { S.fPapel = e.target.value; go(); };
+  el.querySelector('#fBusca').onchange = e => { S.fBusca = e.target.value; go(); };
+  el.querySelector('#btnRelMed').onclick = () => relatorioMedico(S.fMed);
+  el.querySelector('#btnRelTodos').onclick = () => Object.keys(S.premissas.medicos).forEach((m, i) => setTimeout(() => relatorioMedico(m), i * 700));
+}
+function relatorioMedico(m) {
+  const c = S.calc, a = c.acerto[m]; if (!a) return;
+  const per = `${MESES[S.per.mes - 1]}/${S.per.ano}`, R = x => Math.round((x || 0) * 100) / 100;
+  const dt = x => String(x).split('-').reverse().join('/');
+  const resp = c.linhas.filter(r => r.resp === m).sort((x, y) => (x.data > y.data ? 1 : -1));
+  const sol = c.linhas.filter(r => r.sol === m && r.resp !== m && r.repSol).sort((x, y) => (x.data > y.data ? 1 : -1));
+  const resumo = [[`Relatório de repasse — ${m}`], [`Período: ${per}`], [],
+    ['Área', 'Produção bruta', 'Líquido', 'Base da divisão', 'Repasse como executor', 'Recebido como solicitante', 'Máquina', 'Total']];
+  for (const [ar, nome] of AREAS) { const o = c.porArea[ar][m];
+    resumo.push([nome, R(o.bruto), R(o.liquido), R(o.base), R(o.executor), R(o.recebidoSol), R(o.maquinaRecebe), R(o.executor + o.recebidoSol + o.maquinaRecebe)]); }
+  resumo.push(['TOTAL', R(resp.reduce((x, r) => x + r.bruto, 0)), R(resp.reduce((x, r) => x + r.liquido, 0)), R(resp.reduce((x, r) => x + r.base, 0)), R(a.executor), R(a.recebidoSol), R(a.maquina), R(a.total)]);
+  resumo.push([], ['Por convênio', 'Repasse'], ...S.premissas.gruposOrdem.map(g => [g, R(a.porGrupo[g])]), ['TOTAL', R(a.total)]);
+  resumo.push([], ['Já recebido na conta PF', R(a.recebidoPF)], ['Já pago pela clínica', R(a.jaPago)], ['SALDO A RECEBER', R(a.saldo)]);
+  const h1 = ['Data', 'Área', 'Tipo', 'Paciente', 'Convênio', 'Item', 'Solicitante', 'Caixa', 'Convênio (valor)', 'Imposto', 'Cartão', 'Insumo', 'Líquido', 'Repasse ao solicitante', 'Base', '% do médico', 'Repasse do médico'];
+  const s1 = [h1, ...resp.map(r => [dt(r.data), AREA_NOME[r.area], r.tipo || '', r.paciente, r.convenio, r.item, r.sol, R(r.caixa), R(r.conv), R(r.imposto), R(r.cartao), R(r.insumo), R(r.liquido), R(r.repSol), R(r.base), r.pct, R(r.executor)])];
+  const h2 = ['Data', 'Área', 'Paciente', 'Convênio', 'Item', 'Executor', 'Líquido', 'Repasse recebido (20%)'];
+  const s2 = [h2, ...sol.map(r => [dt(r.data), AREA_NOME[r.area], r.paciente, r.convenio, r.item, r.resp, R(r.liquido), R(r.repSol)])];
+  const wb = XLSX.utils.book_new();
+  const add = (aoa, nome, w) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = w.map(x => ({ wch: x })); XLSX.utils.book_append_sheet(wb, ws, nome); };
+  add(resumo, 'Resumo', [30, 16, 16, 16, 20, 22, 12, 14]);
+  add(s1, 'Como responsável', [11, 13, 12, 30, 18, 40, 28, 11, 13, 10, 9, 10, 11, 14, 11, 10, 14]);
+  add(s2, 'Como solicitante', [11, 13, 30, 18, 40, 28, 11, 18]);
+  if (m === S.premissas.maquina.dono) {
+    const mq = c.linhas.filter(r => r.maquina);
+    add([['Data', 'Paciente', 'Convênio', 'Item', 'Executor', 'Líquido', 'Repasse da máquina'], ...mq.map(r => [dt(r.data), r.paciente, r.convenio, r.item, r.resp, R(r.liquido), R(r.maquina)])], 'Máquina', [11, 30, 18, 40, 28, 11, 16]);
+  }
+  XLSX.writeFile(wb, `Repasse_${curto(m)}_${S.per.ano}-${String(S.per.mes).padStart(2, '0')}.xlsx`);
 }
 function tipoPeloNome(nome) {
   const n = UP(nome).normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -712,7 +804,7 @@ async function importarArquivos(files, forcado) {
       msgs.push(`${RELATORIOS[k].nome}: ${res.linhas.length} linhas`);
     } catch (x) { msgs.push(`${f.name}: ${x.message}`); }
   }
-  await salvarPeriodo(); recalcular(); aba('dados'); status(msgs.join(' · '));
+  await salvarPeriodo(); recalcular(); aba(forcado === 'pagos' ? 'pagos' : 'dados'); status(msgs.join(' · '));
 }
 async function buscarApi(silencioso) {
   if (!S.api.url) { if (!silencioso) { alert('Configure a URL da API em "Dados e integração".'); aba('dados'); } return; }
