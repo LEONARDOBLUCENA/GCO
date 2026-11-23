@@ -21,7 +21,7 @@ header .status{font-size:12px;opacity:.85;margin-left:auto}
 nav{display:flex;gap:4px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto;position:sticky;top:52px;z-index:9}
 nav button{border:0;background:transparent;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--muted);white-space:nowrap}
 nav button.on{background:var(--light);color:var(--navy);font-weight:bold}
-main{padding:16px;max-width:1500px;margin:0 auto}
+main{padding:16px;max-width:1920px;margin:0 auto}
 section{display:none} section.on{display:block}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
 .card h2{font-size:15px;color:var(--navy);margin:0 0 10px}
@@ -30,9 +30,19 @@ section{display:none} section.on{display:block}
 .kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px}
 .kpi .l{font-size:12px;color:var(--muted)} .kpi .v{font-size:20px;font-weight:bold;margin-top:4px;color:var(--navy)}
 .kpi .v.neg{color:var(--red)}
+.acms{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.acm .nm{font-weight:bold;color:var(--navy);font-size:13px;margin-bottom:8px;text-transform:uppercase}
+.acm .lin{display:flex;justify-content:space-between;font-size:13px;margin:3px 0;color:var(--muted)} .acm .lin b{color:var(--navy)}
+.acm .lin b.ok{color:#2e7d32} .acm .lin b.neg{color:var(--red)} .acm .falta{font-size:15px;margin-top:6px} .acm .falta span{color:var(--navy);font-weight:bold}
+.acm .bar{height:8px;background:#e6ebf2;border-radius:4px;overflow:hidden;margin:8px 0 4px} .acm .bar i{display:block;height:100%;background:#2e7d32}
+.acm .pc{font-size:11px;color:var(--muted);text-align:right}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:900px){.grid2{grid-template-columns:1fr}}
 .tw{overflow-x:auto}
+.tw.dados{max-height:72vh;overflow:auto;border:1px solid #dfe5ee;border-radius:8px}
+.tw.dados table{font-size:12px}.tw.dados td,.tw.dados th{white-space:nowrap;padding:5px 8px}
+.tw.dados td.item{white-space:normal;min-width:240px}
+.tw.dados thead th{position:sticky;top:0;z-index:2}.tw.dados tfoot td{position:sticky;bottom:0;background:#eef2f8;z-index:2}
 table{border-collapse:collapse;width:100%;font-size:13px}
 th{background:var(--navy);color:#fff;padding:6px 8px;text-align:center;white-space:nowrap;font-weight:bold}
 th.sub{background:var(--blue)}
@@ -495,7 +505,17 @@ function renderAcerto() {
   const inp = (m, campo, sub) => { const v = sub ? (((lanc[m] || {}).pf || {})[sub] || 0) : ((lanc[m] || {})[campo] || 0);
     return `<td class="n"><input class="in" data-m="${esc(m)}" data-c="${campo}" data-s="${sub || ''}" value="${v ? String(v).replace('.', ',') : ''}" placeholder="0,00"></td>`; };
   const sumC = f => ms.reduce((a, m) => a + f(m), 0);
-  const html = `<div class="card"><h2>Acerto com os médicos — ${MESES[S.per.mes - 1]}/${S.per.ano} </h2>
+  const kpiMed = (nome, dev, rec, sal) => { const pc = dev > 0 ? Math.max(0, Math.min(1, rec / dev)) : 0;
+    return `<div class="kpi acm"><div class="nm">${esc(nome)}</div>
+      <div class="lin"><span>Devido no período</span><b>R$ ${fmt(dev)}</b></div>
+      <div class="lin"><span>Já recebeu</span><b class="ok">R$ ${fmt(rec)}</b></div>
+      <div class="bar"><i style="width:${(pc * 100).toFixed(1)}%"></i></div>
+      <div class="lin falta"><span>${sal < -0.005 ? 'Recebeu a mais' : 'Falta receber'}</span><b class="${sal < -0.005 ? 'neg' : ''}">R$ ${fmt(Math.abs(sal))}</b></div>
+      <div class="pc">${(pc * 100).toFixed(0)}% recebido</div></div>`; };
+  const rec = m => c.acerto[m].recebidoPF + c.acerto[m].jaPago;
+  const html = `<div class="kpis acms">${ms.map(m => kpiMed(m, c.acerto[m].total, rec(m), c.acerto[m].saldo)).join('')}
+    ${kpiMed('TOTAL DOS MÉDICOS', sumC(m => c.acerto[m].total), sumC(rec), sumC(m => c.acerto[m].saldo))}</div>
+  <div class="card"><h2>Acerto com os médicos — ${MESES[S.per.mes - 1]}/${S.per.ano} </h2>
   <div class="tw"><table>
     <tr><th style="text-align:left"></th>${ms.map(m => `<th>${esc(m)}</th>`).join('')}<th>TOTAL</th></tr>
     <tr class="sec"><td colspan="${ms.length + 2}">1. REPASSE DEVIDO POR CONVÊNIO (executor + solicitante + máquina)</td></tr>
@@ -716,7 +736,7 @@ function linhasFiltradas() {
 }
 function htmlDadosImportados() {
   const ms = Object.keys(S.premissas.medicos), L = linhasFiltradas(), lim = 800;
-  const sm = k => L.reduce((a, r) => a + (r[k] || 0), 0);
+  const sm = k => L.reduce((a, r) => a + (r[k] || 0), 0), med = S.fMed !== 'todos';
   const papel = r => S.fMed === 'todos' ? '' : (r.resp === S.fMed ? '<span class="tag">responsável</span>' : '<span class="tag warn">solicitante</span>');
   const recebe = r => S.fMed === 'todos' ? r.executor : (r.resp === S.fMed ? r.executor : r.repSol);
   return `<div class="card"><h2>Dados importados (${L.length} linhas)</h2>
@@ -726,15 +746,15 @@ function htmlDadosImportados() {
       <input class="txt" id="fBusca" placeholder="buscar paciente, item, convênio…" value="${esc(S.fBusca)}" style="width:240px">
       <button class="btn sm" id="btnRelMed" ${S.fMed === 'todos' ? 'disabled' : ''}>Baixar relatório do médico (.xlsx)</button>
       <button class="btn sm sec" id="btnRelTodos">Baixar relatório de todos os médicos</button></div>
-    <div class="tw"><table>
-      <tr><th>Data</th><th>Área</th><th style="text-align:left">Paciente</th><th style="text-align:left">Convênio</th><th style="text-align:left">Item</th><th style="text-align:left">Responsável</th><th style="text-align:left">Solicitante</th>
-        ${S.fMed !== 'todos' ? '<th>Papel</th>' : ''}<th>Bruto</th><th>Líquido</th><th>Rep. solicitante</th><th>Base</th><th>%</th><th>Rep. executor</th>${S.fMed !== 'todos' ? '<th>Médico recebe</th>' : ''}<th>Clínica</th></tr>
-      ${L.slice(0, lim).map(r => `<tr><td>${esc(String(r.data).split('-').reverse().join('/'))}</td><td>${AREA_NOME[r.area] || ''}${r.tipo && r.tipo !== 'Lente' ? ' · ' + r.tipo : ''}</td>
-        <td>${esc(r.paciente)}</td><td>${esc(r.convenio)}</td><td style="white-space:normal;min-width:220px">${esc(r.item)}</td><td>${esc(r.resp)}</td><td>${esc(r.sol)}</td>
-        ${S.fMed !== 'todos' ? `<td>${papel(r)}</td>` : ''}${td(r.bruto)}${td(r.liquido)}${td(r.repSol)}${td(r.base)}<td class="n pct">${r.pct ? fmtP(r.pct) : '-'}</td>${td(r.executor)}
-        ${S.fMed !== 'todos' ? td(recebe(r), 'b') : ''}${td(r.clinica)}</tr>`).join('')}
-      <tr class="tot"><td colspan="${S.fMed !== 'todos' ? 8 : 7}">Total (${L.length} linhas)</td>${td(sm('bruto'))}${td(sm('liquido'))}${td(sm('repSol'))}${td(sm('base'))}<td></td>${td(sm('executor'))}
-        ${S.fMed !== 'todos' ? td(L.reduce((a, r) => a + recebe(r), 0)) : ''}${td(sm('clinica'))}</tr>
+    <div class="tw dados"><table>
+      <thead><tr><th>Data</th><th>Área</th><th>Tipo</th><th style="text-align:left">Paciente</th><th style="text-align:left">Convênio</th><th>Grupo</th><th style="text-align:left">Item</th><th style="text-align:left">Responsável</th><th style="text-align:left">Solicitante</th>
+        ${med ? '<th>Papel</th>' : ''}<th>Caixa</th><th>Convênio (R$)</th><th>Bruto</th><th>Imposto</th><th>Cartão</th><th>Insumo</th><th>Líquido</th><th>Rep. solicitante</th><th>Base</th><th>%</th><th>Rep. executor</th><th>Comissão</th><th>Máquina</th><th>Clínica</th>${med ? '<th>Médico recebe</th>' : ''}</tr></thead>
+      <tbody>${L.slice(0, lim).map(r => `<tr><td>${esc(String(r.data).split('-').reverse().join('/'))}</td><td>${AREA_NOME[r.area] || ''}</td><td>${esc(r.tipo || '')}</td>
+        <td>${esc(r.paciente)}</td><td>${esc(r.convenio)}</td><td>${esc(r.grupo)}</td><td class="item">${esc(r.item)}</td><td>${esc(r.resp)}</td><td>${esc(r.sol)}</td>
+        ${med ? `<td>${papel(r)}</td>` : ''}${td(r.caixa)}${td(r.conv)}${td(r.bruto)}${td(r.imposto)}${td(r.cartao)}${td(r.insumo)}${td(r.liquido)}${td(r.repSol)}${td(r.base)}<td class="n pct">${r.pct ? fmtP(r.pct) : '-'}</td>${td(r.executor)}${td(r.comissao)}${td(r.maquina)}${td(r.clinica)}
+        ${med ? td(recebe(r), 'b') : ''}</tr>`).join('')}</tbody>
+      <tfoot><tr class="tot"><td colspan="${med ? 10 : 9}">Total (${L.length} linhas)</td>${['caixa', 'conv', 'bruto', 'imposto', 'cartao', 'insumo', 'liquido', 'repSol', 'base'].map(k => td(sm(k))).join('')}<td></td>${['executor', 'comissao', 'maquina', 'clinica'].map(k => td(sm(k))).join('')}
+        ${med ? td(L.reduce((a, r) => a + recebe(r), 0)) : ''}</tr></tfoot>
     </table></div>${L.length > lim ? `<p class="muted">Mostrando as primeiras ${lim} linhas; use os filtros. O relatório em Excel traz todas.</p>` : ''}</div>`;
 }
 function ligarDadosImportados(el) {
@@ -759,15 +779,15 @@ function relatorioMedico(m) {
   resumo.push(['TOTAL', R(resp.reduce((x, r) => x + r.bruto, 0)), R(resp.reduce((x, r) => x + r.liquido, 0)), R(resp.reduce((x, r) => x + r.base, 0)), R(a.executor), R(a.recebidoSol), R(a.maquina), R(a.total)]);
   resumo.push([], ['Por convênio', 'Repasse'], ...S.premissas.gruposOrdem.map(g => [g, R(a.porGrupo[g])]), ['TOTAL', R(a.total)]);
   resumo.push([], ['Já recebido na conta PF', R(a.recebidoPF)], ['Já pago pela clínica', R(a.jaPago)], ['SALDO A RECEBER', R(a.saldo)]);
-  const h1 = ['Data', 'Área', 'Tipo', 'Paciente', 'Convênio', 'Item', 'Solicitante', 'Caixa', 'Convênio (valor)', 'Imposto', 'Cartão', 'Insumo', 'Líquido', 'Repasse ao solicitante', 'Base', '% do médico', 'Repasse do médico'];
-  const s1 = [h1, ...resp.map(r => [dt(r.data), AREA_NOME[r.area], r.tipo || '', r.paciente, r.convenio, r.item, r.sol, R(r.caixa), R(r.conv), R(r.imposto), R(r.cartao), R(r.insumo), R(r.liquido), R(r.repSol), R(r.base), r.pct, R(r.executor)])];
-  const h2 = ['Data', 'Área', 'Paciente', 'Convênio', 'Item', 'Executor', 'Líquido', 'Repasse recebido (20%)'];
-  const s2 = [h2, ...sol.map(r => [dt(r.data), AREA_NOME[r.area], r.paciente, r.convenio, r.item, r.resp, R(r.liquido), R(r.repSol)])];
+  const h1 = ['Data', 'Área', 'Tipo', 'Paciente', 'Convênio', 'Item', 'Solicitante', 'Caixa', 'Convênio (valor)', 'Imposto', 'Cartão', 'Insumo', 'Líquido', 'Repasse ao solicitante', 'Base', '% do médico', 'Repasse do médico', 'Comissão comercial', 'Máquina', 'Clínica'];
+  const s1 = [h1, ...resp.map(r => [dt(r.data), AREA_NOME[r.area], r.tipo || '', r.paciente, r.convenio, r.item, r.sol, R(r.caixa), R(r.conv), R(r.imposto), R(r.cartao), R(r.insumo), R(r.liquido), R(r.repSol), R(r.base), r.pct, R(r.executor), R(r.comissao), R(r.maquina), R(r.clinica)])];
+  const h2 = ['Data', 'Área', 'Paciente', 'Convênio', 'Item', 'Executor', 'Caixa', 'Convênio (valor)', 'Bruto', 'Imposto', 'Cartão', 'Insumo', 'Líquido', 'Repasse recebido (20%)'];
+  const s2 = [h2, ...sol.map(r => [dt(r.data), AREA_NOME[r.area], r.paciente, r.convenio, r.item, r.resp, R(r.caixa), R(r.conv), R(r.bruto), R(r.imposto), R(r.cartao), R(r.insumo), R(r.liquido), R(r.repSol)])];
   const wb = XLSX.utils.book_new();
   const add = (aoa, nome, w) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = w.map(x => ({ wch: x })); XLSX.utils.book_append_sheet(wb, ws, nome); };
   add(resumo, 'Resumo', [30, 16, 16, 16, 20, 22, 12, 14]);
   add(s1, 'Como responsável', [11, 13, 12, 30, 18, 40, 28, 11, 13, 10, 9, 10, 11, 14, 11, 10, 14]);
-  add(s2, 'Como solicitante', [11, 13, 30, 18, 40, 28, 11, 18]);
+  add(s2, 'Como solicitante', [11, 13, 30, 18, 40, 28, 11, 13, 11, 10, 9, 10, 11, 18]);
   if (m === S.premissas.maquina.dono) {
     const mq = c.linhas.filter(r => r.maquina);
     add([['Data', 'Paciente', 'Convênio', 'Item', 'Executor', 'Líquido', 'Repasse da máquina'], ...mq.map(r => [dt(r.data), r.paciente, r.convenio, r.item, r.resp, R(r.liquido), R(r.maquina)])], 'Máquina', [11, 30, 18, 40, 28, 11, 16]);
