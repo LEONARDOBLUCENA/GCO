@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BI GCO — Fechamento</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --navy:#1F3864; --blue:#2F5597; --light:#D9E1F2; --grey:#F2F2F2; --yel:#FFF2CC;
+  --bg:#F5F7FB; --card:#FFFFFF; --text:#1F2933; --muted:#5F6B7A; --line:#DDE3EC;
+  --red:#C0392B; --green:#1E8449;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+header{background:var(--navy);color:#fff;padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:10}
+header h1{font-size:17px;margin:0 12px 0 0;white-space:nowrap}
+header select,header button{font-size:13px;padding:6px 8px;border-radius:6px;border:1px solid #9fb0cf}
+header .status{font-size:12px;opacity:.85;margin-left:auto}
+nav{display:flex;gap:4px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto;position:sticky;top:52px;z-index:9}
+nav button{border:0;background:transparent;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--muted);white-space:nowrap}
+nav button.on{background:var(--light);color:var(--navy);font-weight:bold}
+main{padding:16px;max-width:1500px;margin:0 auto}
+section{display:none} section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.card h2{font-size:15px;color:var(--navy);margin:0 0 10px}
+.card h3{font-size:13px;color:var(--navy);margin:14px 0 6px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px}
+.kpi .l{font-size:12px;color:var(--muted)} .kpi .v{font-size:20px;font-weight:bold;margin-top:4px;color:var(--navy)}
+.kpi .v.neg{color:var(--red)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{background:var(--navy);color:#fff;padding:6px 8px;text-align:center;white-space:nowrap;font-weight:bold}
+th.sub{background:var(--blue)}
+td{padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+td.lab{white-space:normal;min-width:260px}
+tr.tot td{background:var(--light);font-weight:bold;border-top:2px solid var(--navy)}
+tr.prod td{background:var(--grey);font-weight:bold}
+tr.sec td{color:var(--navy);font-weight:bold;padding-top:12px;border-bottom:0}
+tr.memo td{color:var(--muted);font-style:italic;font-size:12px}
+.neg{color:var(--red)} .ok{color:var(--green)}
+.pct{color:var(--muted);font-size:12px}
+input.in{width:110px;text-align:right;background:var(--yel);border:1px solid #e3cf8a;border-radius:4px;padding:4px;color:#0000c8;font-size:13px}
+input.txt,select.txt{border:1px solid var(--line);border-radius:4px;padding:4px 6px;font-size:13px}
+.btn{background:var(--navy);color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer;font-size:13px}
+.btn.sec{background:#fff;color:var(--navy);border:1px solid var(--navy)}
+.btn.sm{padding:3px 8px;font-size:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.muted{color:var(--muted);font-size:12px}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:var(--light);color:var(--navy)}
+.tag.warn{background:#FDEBD0;color:#9A5B00}
+.tag.bad{background:#FADBD8;color:var(--red)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{border:1px solid var(--line);background:#fff;border-radius:14px;padding:4px 10px;cursor:pointer;font-size:12px}
+.chips button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+canvas{max-height:300px}
+.drop{border:2px dashed #9fb0cf;border-radius:10px;padding:18px;text-align:center;color:var(--muted);background:#fff}
+</style>
+</head>
+<body>
+<header>
+  <h1>BI GCO · Fechamento</h1>
+  <select id="selAno"></select>
+  <select id="selMes"></select>
+  <select id="selParte"><option value="Q1">1ª quinzena</option><option value="Q2">2ª quinzena</option><option value="M">Mês inteiro</option></select>
+  <button id="btnApi" title="Buscar dados do Totvs pela API">⟳ Atualizar (API)</button>
+  <span class="status" id="status">—</span>
+</header>
+<nav id="nav">
+  <button data-t="painel" class="on">Painel</button>
+  <button data-t="medicos">Resumo médicos</button>
+  <button data-t="acerto">Acerto médicos</button>
+  <button data-t="clinica">Resultado clínica</button>
+  <button data-t="pagos">Pagos</button>
+  <button data-t="premissas">Premissas</button>
+  <button data-t="dados">Dados e integração</button>
+</nav>
+<main>
+  <section id="t-painel" class="on"></section>
+  <section id="t-medicos"></section>
+  <section id="t-acerto"></section>
+  <section id="t-clinica"></section>
+  <section id="t-pagos"></section>
+  <section id="t-premissas"></section>
+  <section id="t-dados"></section>
+</main>
+
+<script>
+/*ENGINE-START*/
+/* =====================================================================
+   MOTOR DE REGRAS — espelho da planilha de fechamento (Premissas, Resumo
+   Médicos, Resultado Clínica e Acerto Médicos). Sem DOM: dá para testar
+   e reaproveitar no robô do Railway.
+   ===================================================================== */
+const DEFAULT_PREMISSAS = {
+  versao: 1,
+  medicos: {
+    'RODRIGO DE OLIVEIRA PAZETTO': { consultas: 0.60, exames: 0.30, cirurgias: 0.70, procedimentos: 0.70, lentes: 0.30 },
+    'NILTON PAZETTO':              { consultas: 0.70, exames: 0.30, cirurgias: 0.70, procedimentos: 0.70, lentes: 0.20 },
+    'LUIZA BIRCK KLEIN':           { consultas: 0.60, exames: 0.30, cirurgias: 0.70, procedimentos: 0.70, lentes: 0.30 },
+    'TACYANA PICININ':             { consultas: 0.60, exames: 0.30, cirurgias: 0.70, procedimentos: 0.70, lentes: 0.30 }
+  },
+  excecoesLentes: [
+    { nomeCurto: 'TACYANA', tipo: 'Escleral', pct: 0.50 },
+    { nomeCurto: 'TACYANA', tipo: 'Teste de Lente', pct: 0.60 },
+    { nomeCurto: 'TACYANA', tipo: 'Lente', pct: 0.70 }
+  ],
+  palavrasProcedimento: ['YAG', 'EYLIA', 'ANTIANGIOGENICO', 'TOXINA', ' IPL', 'CO2', 'FOTOCOAGULA'],
+  tiposLente: [ { palavra: 'ESCLERAL', tipo: 'Escleral' }, { palavra: 'TESTE DE LENTE', tipo: 'Teste de Lente' } ],
+  maquina: { dono: 'NILTON PAZETTO', pct: 0.20, palavras: ['CAMPIMETRIA', 'RETINOGRAFIA', 'PAPILOGRAFIA'] },
+  comissaoPct: 0.013,
+  convenios: { 'PARTICULAR': 'Particular', 'PARTICULAR FAMILIAR': 'Particular', 'UNIMED': 'Unimed', 'IPERGS': 'IPE', 'SAUDE CAIXA': 'Saúde Caixa', 'SAÚDE CAIXA': 'Saúde Caixa' },
+  grupoPadrao: 'Outros convênios',
+  gruposOrdem: ['Particular', 'Unimed', 'IPE', 'Saúde Caixa', 'Outros convênios'],
+  pagosRegras: [
+    ['DARF','Outros impostos e taxas'],['ISSQN','Outros impostos e taxas'],['NFS-E','Serviços de terceiros'],
+    ['NOTA FISCAL DE COMPRAS','Materiais e fornecedores'],['RECIBO','Outras despesas'],['BOLETO','Outras despesas'],['FATURA','Outras despesas'],
+    ['FOLHA','Folha, encargos e benefícios'],['FP - ','Folha, encargos e benefícios'],['Recisão','Folha, encargos e benefícios'],
+    ['Recursos Humanos','Folha, encargos e benefícios'],['UNIMED','Folha, encargos e benefícios'],['VR BENEFICIOS','Folha, encargos e benefícios'],
+    ['INSS','Folha, encargos e benefícios'],['REPASSE MENSAL SÓCIO','Retirada das sócias administrativas'],['Aluguel','Aluguel e condomínio'],
+    ['ENERGIA','Energia, água, telefone e internet'],['Água','Energia, água, telefone e internet'],['CLARO','Energia, água, telefone e internet'],
+    ['Embratel','Energia, água, telefone e internet'],['TELECOM','Energia, água, telefone e internet'],['STARLINK','Energia, água, telefone e internet'],
+    ['Manutenção','Manutenção e equipamentos'],['Mensal Alcon','Manutenção e equipamentos'],['MKT','Marketing'],['Marketing','Marketing'],
+    ['Lentes Cirurgicas','FORA: insumo de lente (já descontado no líquido)'],['Lentes de Contato','FORA: insumo de lente (já descontado no líquido)'],
+    ['PIS','FORA: imposto da nota (já descontado no líquido)'],['COFINS','FORA: imposto da nota (já descontado no líquido)'],
+    ['IRPJ','FORA: imposto da nota (já descontado no líquido)'],['CSLL','FORA: imposto da nota (já descontado no líquido)'],
+    ['Difernça de Valor Impostos','FORA: imposto da nota (já descontado no líquido)'],['Serviços Prestados - Compet','FORA: imposto da nota (já descontado no líquido)'],
+    ['MDR CONTABILIDADE','Serviços de terceiros'],['esterilizacao','Serviços de terceiros'],['PARCELAMENTO','Parcelamentos de impostos'],
+    ['PARCELA DE FINANCIAMENTO','Financiamentos bancários'],['ISSQN FIXO','Outros impostos e taxas'],['Capitalização','Título de capitalização'],
+    ['CREDITO DE ADIANTAMENTO','FORA: adiantamento de paciente'],['Não Debitadas','Parcelamentos de impostos'],['TOTVS','Serviços de terceiros'],
+    ['SUELEN DE ALMEIDA','Serviços de terceiros']
+  ],
+  gruposDespesa: ['Folha, encargos e benefícios','Retirada das sócias administrativas','Aluguel e condomínio','Outros impostos e taxas',
+    'Materiais e fornecedores','Serviços de terceiros','Energia, água, telefone e internet','Manutenção e equipamentos','Marketing','Outras despesas'],
+  gruposDivida: ['Financiamentos bancários','Parcelamentos de impostos','Título de capitalização']
+};
+
+const RELATORIOS = {
+  consultas: { nome: 'Consultas', aba: 'Consultas', chaves: ['CONSULT'] },
+  exames: { nome: 'Exames', aba: 'Exames', chaves: ['EXAME'] },
+  cirurgias_procedimentos: { nome: 'Cirurgias e Procedimentos', aba: 'Cirurgia e Procedimentos', chaves: ['CIRURG', 'PROCED'] },
+  lentes: { nome: 'Lentes', aba: 'Lentes', chaves: ['LENTE'] },
+  bloco: { nome: 'Bloco', aba: 'Bloco', chaves: ['BLOCO'] },
+  pagos: { nome: 'Pagos', aba: 'Pagos', chaves: ['PAGO'] }
+};
+const AREAS = [
+  ['consultas', 'Consultas'], ['exames', 'Exames'], ['cirurgias', 'Cirurgias'], ['procedimentos', 'Procedimentos'], ['lentes', 'Lentes']
+];
+
+const num = v => { if (typeof v === 'number') return isFinite(v) ? v : 0; if (v == null || v === '') return 0;
+  const s = String(v).trim(); const x = s.includes(',') ? parseFloat(s.replace(/\./g, '').replace(',', '.')) : parseFloat(s); return isFinite(x) ? x : 0; };
+const UP = s => (s == null ? '' : String(s)).toUpperCase();
+const has = (t, p) => UP(t).includes(UP(p));
+const r2 = x => Math.round(x * 100) / 100;
+
+/* ---------- datas ---------- */
+function toDate(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return isNaN(v) ? null : new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  if (typeof v === 'number') { const d = new Date(Math.round((v - 25569) * 86400000)); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); }
+  const s = String(v).trim(); let m;
+  if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) return new Date(+m[3], +m[2] - 1, +m[1]);
+  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return new Date(+m[1], +m[2] - 1, +m[3]);
+  return null;
+}
+function intervalo(per) {   // per = {ano, mes (1-12), parte: Q1|Q2|M}
+  const fimMes = new Date(per.ano, per.mes, 0).getDate();
+  const ini = per.parte === 'Q2' ? 16 : 1, fim = per.parte === 'Q1' ? 15 : fimMes;
+  return { ini: new Date(per.ano, per.mes - 1, ini), fim: new Date(per.ano, per.mes - 1, fim) };
+}
+const dentro = (d, iv) => d && d >= iv.ini && d <= iv.fim;
+const iso = d => d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+
+/* ---------- leitura dos relatórios do Totvs (array de linhas) ----------
+   Aceita: (a) .xls exportado do Totvs (cabeçalho em qualquer linha, linhas
+   de total, data/paciente só na 1ª linha) e (b) aba da planilha de
+   fechamento (cabeçalho na linha 1). Devolve {linhas, totalGeral}. */
+function lerRelatorio(aoa, tipo) {
+  const alvo = tipo === 'pagos' ? 'BAIXADO TOTAL' : 'DATA_ATENDIMENTO';
+  let hr = aoa.findIndex(r => (r || []).some(c => UP(c).trim() === alvo));
+  if (hr < 0) throw new Error(`Cabeçalho não encontrado (procurei "${alvo}")`);
+  const head = aoa[hr].map(c => (c == null ? '' : String(c).trim()));
+  const linhas = []; let totalGeral = null, ult = null;
+  for (let i = hr + 1; i < aoa.length; i++) {
+    const r = aoa[i] || [];
+    const o = {}; let vazio = true;
+    head.forEach((h, j) => { if (!h) return; const v = r[j]; o[h] = (v === undefined ? '' : v); if (v !== '' && v != null) vazio = false; });
+    if (vazio) continue;
+    const primeiras = r.slice(0, 4).map(x => UP(x)).join(' ');
+    if (primeiras.includes('TOTAL')) { if (primeiras.includes('GERAL')) totalGeral = o; continue; }
+    if (tipo === 'pagos') {
+      if (o['CENTRO DE CUSTOS'] === undefined && o['Centro de custos'] !== undefined) o['CENTRO DE CUSTOS'] = o['Centro de custos'];
+      if (!num(o['Baixado Total']) && !o['Baixa']) continue;
+      if ((o['Nome'] === '' || o['Nome'] == null) && ult) {
+        for (const k of ['Filial', 'Venc.', 'Nº Doc.', 'Nome', 'Histórico', 'Tipo do Documento', 'CENTRO DE CUSTOS', 'Valor', 'Desconto'])
+          if (o[k] === '' || o[k] == null) o[k] = ult[k];
+      }
+    } else {
+      if (tipo === 'bloco' && o['PACIENTE'] === undefined) o['PACIENTE'] = o['NOMEPACIENTE'];
+      if ((o['DATA_ATENDIMENTO'] === '' || o['DATA_ATENDIMENTO'] == null) && ult) o['DATA_ATENDIMENTO'] = ult['DATA_ATENDIMENTO'];
+      if ((o['PACIENTE'] === '' || o['PACIENTE'] == null) && ult) {
+        for (const k of (tipo === 'bloco' ? ['PACIENTE'] : ['PACIENTE', 'CONVÊNIO', 'PLANO'])) if (o[k] === '' || o[k] == null) o[k] = ult[k];
+      }
+      const resp = tipo === 'bloco' ? o['MEDICO_RESPONSAVEL'] : o['MÉDICO_RESPONSÁVEL'];
+      if (!resp && !num(o['CAIXA']) && !num(o['VALOR_A_RECEBER_CONVÊNIO']) && !num(o['VALOR_CONVENIO'])) continue;
+    }
+    ult = o; linhas.push(o);
+  }
+  // normaliza datas para ISO (para guardar em JSON)
+  for (const o of linhas) {
+    if (tipo === 'pagos') { o['Baixa'] = iso(toDate(o['Baixa'])); o['Venc.'] = iso(toDate(o['Venc.'])); }
+    else o['DATA_ATENDIMENTO'] = iso(toDate(o['DATA_ATENDIMENTO']));
+  }
+  return { linhas, totalGeral };
+}
+
+/* ---------- regras ---------- */
+function criarMotor(P) {
+  const ehDaCasa = m => Object.prototype.hasOwnProperty.call(P.medicos, m);
+  const nomeCurto = m => UP(m).trim().split(' ')[0];
+  const grupoConvenio = c => P.convenios[UP(c).trim()] || P.grupoPadrao;
+  const areaCir = item => P.palavrasProcedimento.some(p => has(item, p)) ? 'procedimentos' : 'cirurgias';
+  const tipoLente = item => { for (const t of P.tiposLente) if (has(item, t.palavra)) return t.tipo; return 'Lente'; };
+  const ehMaquina = item => P.maquina.palavras.some(p => has(item, p));
+  function pctExecutor(med, area, tipo) {
+    const t = P.medicos[med]; if (!t) return 0;
+    if (area === 'lentes') { const e = P.excecoesLentes.find(x => UP(x.nomeCurto) === nomeCurto(med) && x.tipo === tipo); if (e) return num(e.pct); }
+    return num(t[area]);
+  }
+
+  function linha(rel, l) {
+    const resp = UP(l['MÉDICO_RESPONSÁVEL']).trim(), sol = UP(l['MÉDICO_SOLICITANTE']).trim(), item = l['ITEM'];
+    const area = rel === 'cirurgias_procedimentos' ? areaCir(item) : rel;
+    const tipo = area === 'lentes' ? tipoLente(item) : null;
+    const caixa = num(l['CAIXA']), conv = num(l['VALOR_A_RECEBER_CONVÊNIO']);
+    const imposto = num(l['IMPOSTO_SOBRE_CAIXA']) + num(l['IMPOSTO_SOBRE_CONVÊNIO']);
+    const cartao = num(l['DESCONTO_TAXA_CARTÃO']), insumo = num(l['CUSTO_INSUMO']), liquido = num(l['LÍQUIDO']);
+    let repSol = num(l['REPASSE_INDICAÇÃO_MÉDICO_SOLICITANTE']);
+    if (area === 'exames' && !ehDaCasa(sol)) repSol = 0;          // exame de médico de fora: sem repasse
+    const base = liquido - repSol, pct = pctExecutor(resp, area, tipo), executor = base * pct;
+    const comissao = (l['COMERCIAL'] != null && String(l['COMERCIAL']).trim() !== '') ? P.comissaoPct * (caixa + conv) : 0;
+    const maquina = (area === 'exames' && ehMaquina(item)) ? P.maquina.pct * liquido : 0;
+    const clinica = base - executor - comissao - maquina;
+    return { rel, area, tipo, grupo: grupoConvenio(l['CONVÊNIO']), data: l['DATA_ATENDIMENTO'], item, convenio: l['CONVÊNIO'],
+      resp, sol, solDaCasa: ehDaCasa(sol), caixa, conv, bruto: caixa + conv, imposto, cartao, insumo, liquido,
+      repSol, base, pct, executor, comissao, maquina, clinica, executorTotvs: num(l['REPASSE_MÉDICO_EXECUTOR']) };
+  }
+  function bloco(l) {
+    const caixa = num(l['CAIXA']), conv = num(l['VALOR_CONVENIO']);
+    return { resp: UP(l['MEDICO_RESPONSAVEL']).trim(), data: l['DATA_ATENDIMENTO'], caixa, conv, bruto: caixa + conv, grupo: grupoConvenio(l['CONVENIO']) };
+  }
+  function grupoPago(p) {
+    const texto = [p['Tipo do Documento'], p['Nome'], p['Histórico'], p['CENTRO DE CUSTOS'] ?? p['Centro de custos'] ?? ''].join(' | ');
+    let g = 'VERIFICAR'; for (const [w, gr] of P.pagosRegras) if (w && has(texto, w)) g = gr; return g;
+  }
+  const secaoPago = g => g.startsWith('FORA:') ? 'Fora' : P.gruposDivida.includes(g) ? 'Dívida' : g === 'VERIFICAR' ? 'Verificar' : 'Despesa';
+
+  /* ---------- cálculo completo de um período ---------- */
+  function calcular(dados, per, lanc = {}, retencao = 0) {
+    const iv = intervalo(per);
+    const L = [];
+    for (const rel of ['consultas', 'exames', 'cirurgias_procedimentos', 'lentes'])
+      for (const l of (dados[rel] || [])) { const d = toDate(l['DATA_ATENDIMENTO']); if (dentro(d, iv)) L.push(linha(rel, l)); }
+    const B = (dados.bloco || []).filter(l => dentro(toDate(l['DATA_ATENDIMENTO']), iv)).map(bloco);
+    const PG = (dados.pagos || []).map(p => { const g = grupoPago(p); const d = toDate(p['Baixa']);
+      return { ...p, grupo: g, secao: secaoPago(g), noPeriodo: dentro(d, iv), valor: dentro(d, iv) ? num(p['Baixado Total']) : 0 }; });
+
+    const medicos = Object.keys(P.medicos);
+    const soma = (arr, k) => arr.reduce((a, r) => a + r[k], 0);
+    const zeroG = () => Object.fromEntries(P.gruposOrdem.map(g => [g, 0]));
+
+    // Resumo por médico × área (executor = MÉDICO_RESPONSÁVEL)
+    const porArea = {};
+    for (const [a] of AREAS) {
+      porArea[a] = {};
+      for (const m of [...medicos, '__TOTAL__']) {
+        const rs = L.filter(r => r.area === a && (m === '__TOTAL__' ? ehDaCasa(r.resp) : r.resp === m));
+        const recebeu = L.filter(r => r.area === a && r.repSol && (m === '__TOTAL__' ? ehDaCasa(r.sol) : r.sol === m));
+        porArea[a][m] = {
+          caixa: soma(rs, 'caixa'), conv: soma(rs, 'conv'), bruto: soma(rs, 'bruto'), imposto: soma(rs, 'imposto'), cartao: soma(rs, 'cartao'),
+          insumo: soma(rs, 'insumo'), liquido: soma(rs, 'liquido'), repSol: soma(rs, 'repSol'), base: soma(rs, 'base'),
+          executor: soma(rs, 'executor'), comissao: soma(rs, 'comissao'), maquinaSai: soma(rs, 'maquina'), clinica: soma(rs, 'clinica'),
+          executorTotvs: soma(rs, 'executorTotvs'), recebidoSol: soma(recebeu, 'repSol'),
+          maquinaRecebe: (m === P.maquina.dono || m === '__TOTAL__') ? soma(L.filter(r => r.area === a), 'maquina') : 0
+        };
+      }
+    }
+    // Totais e acerto por médico
+    const acerto = {};
+    for (const m of medicos) {
+      const porGrupo = zeroG(); let exe = 0, rec = 0, maq = 0;
+      for (const r of L) {
+        if (r.resp === m) { exe += r.executor; porGrupo[r.grupo] += r.executor; }
+        if (r.sol === m && r.repSol) { rec += r.repSol; porGrupo[r.grupo] += r.repSol; }
+        if (m === P.maquina.dono && r.maquina) { maq += r.maquina; porGrupo[r.grupo] += r.maquina; }
+      }
+      const lm = lanc[m] || {}; const pf = lm.pf || {};
+      const recebidoPF = P.gruposOrdem.reduce((a, g) => a + num(pf[g]), 0);
+      const jaPago = num(lm.adiantamentos) + num(lm.outros);
+      const total = exe + rec + maq;
+      acerto[m] = { executor: exe, recebidoSol: rec, maquina: maq, total, porGrupo, recebidoPF, jaPago, saldo: total - recebidoPF - jaPago };
+    }
+    const outrosSolicitantes = L.filter(r => r.repSol && !ehDaCasa(r.sol)).reduce((a, r) => a + r.repSol, 0);
+    const semDono = L.filter(r => !ehDaCasa(r.resp));   // executor fora da tabela: tudo fica na clínica
+
+    // Resultado da clínica por área
+    const colunas = [...AREAS.map(([a, n]) => [a, n]), ['bloco', 'Bloco']];
+    const res = {};
+    for (const [a] of colunas) {
+      const rs = a === 'bloco' ? [] : L.filter(r => r.area === a);
+      const bl = a === 'bloco' ? B : [];
+      const o = { caixa: soma(rs, 'caixa') + soma(bl, 'caixa'), conv: soma(rs, 'conv') + soma(bl, 'conv') };
+      o.bruto = o.caixa + o.conv; o.imposto = soma(rs, 'imposto'); o.cartao = soma(rs, 'cartao'); o.insumo = soma(rs, 'insumo');
+      o.liquido = o.bruto - o.imposto - o.cartao - o.insumo;
+      o.executores = soma(rs, 'executor'); o.solicitantes = soma(rs, 'repSol'); o.maquina = soma(rs, 'maquina'); o.comissao = soma(rs, 'comissao');
+      o.clinica = o.liquido - o.executores - o.solicitantes - o.maquina - o.comissao;
+      res[a] = o;
+    }
+    const T = k => colunas.reduce((acc, [a]) => acc + res[a][k], 0);
+    const porGrupoPago = {}; for (const p of PG) if (p.noPeriodo) porGrupoPago[p.grupo] = (porGrupoPago[p.grupo] || 0) + p.valor;
+    const despesas = P.gruposDespesa.reduce((a, g) => a + (porGrupoPago[g] || 0), 0);
+    const divida = P.gruposDivida.reduce((a, g) => a + (porGrupoPago[g] || 0), 0);
+    const fora = Object.entries(porGrupoPago).filter(([g]) => g.startsWith('FORA:')).reduce((a, [, v]) => a + v, 0);
+    const verificar = porGrupoPago['VERIFICAR'] || 0;
+    const totalPago = PG.reduce((a, p) => a + p.valor, 0);
+    const ficouClinica = T('clinica') - num(retencao);
+    const clinica = {
+      colunas, res, bruto: T('bruto'), caixa: T('caixa'), conv: T('conv'), imposto: T('imposto'), cartao: T('cartao'), insumo: T('insumo'),
+      retencao: num(retencao), liquido: T('liquido') - num(retencao), executores: T('executores'), solicitantes: T('solicitantes'),
+      maquina: T('maquina'), comissao: T('comissao'), ficouClinica, porGrupoPago, despesas, divida, fora, verificar, totalPago,
+      conferenciaPagos: r2(totalPago - despesas - divida - fora - verificar),
+      resultadoOperacional: ficouClinica - despesas, sobrou: ficouClinica - despesas - divida
+    };
+    return { iv, linhas: L, bloco: B, pagos: PG, medicos, porArea, acerto, outrosSolicitantes, semDono, clinica };
+  }
+  return { calcular, linha, grupoPago, secaoPago, grupoConvenio };
+}
+/*ENGINE-END*/
+
+/* =====================================================================
+   ARMAZENAMENTO (IndexedDB no navegador; nada sai do computador)
+   ===================================================================== */
+const DB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((ok, err) => {
+    const r = indexedDB.open('bi-gco', 1);
+    r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv'); };
+    r.onsuccess = () => ok(r.result); r.onerror = () => err(r.error);
+  }));
+  const tx = async (mode, fn) => { const d = await open(); return new Promise((ok, err) => {
+    const t = d.transaction('kv', mode); const s = t.objectStore('kv'); const q = fn(s); t.oncomplete = () => ok(q && q.result); t.onerror = () => err(t.error); }); };
+  return {
+    get: k => tx('readonly', s => s.get(k)).catch(() => null),
+    set: (k, v) => tx('readwrite', s => s.put(v, k)).catch(e => alert('Não foi possível salvar: ' + e)),
+    del: k => tx('readwrite', s => s.delete(k)),
+    keys: () => tx('readonly', s => s.getAllKeys()).catch(() => [])
+  };
+})();
+
+/* =====================================================================
+   ESTADO E UI
+   ===================================================================== */
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const S = { premissas: null, api: { url: '', token: '', auto: false }, per: null, periodo: null, calc: null, area: 'todas', filtroPagos: 'todos' };
+const fmt = v => (Math.abs(v) < 0.005 ? '-' : v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const fmtP = v => (v * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const td = (v, cls = '') => `<td class="n ${v < -0.005 ? 'neg' : ''} ${cls}">${fmt(v)}</td>`;
+const chave = per => `periodo:${per.ano}-${String(per.mes).padStart(2, '0')}-${per.parte}`;
+const curto = m => m.split(' ').slice(0, 1).join(' ');
+const status = t => document.getElementById('status').textContent = t;
+
+async function init() {
+  S.premissas = (await DB.get('premissas')) || JSON.parse(JSON.stringify(DEFAULT_PREMISSAS));
+  S.api = (await DB.get('api')) || S.api;
+  const hoje = new Date(); const sa = document.getElementById('selAno'), sm = document.getElementById('selMes'), sp = document.getElementById('selParte');
+  for (let a = hoje.getFullYear() + 1; a >= 2025; a--) sa.add(new Option(a, a));
+  MESES.forEach((m, i) => sm.add(new Option(m, i + 1)));
+  const ult = (await DB.get('ultimoPeriodo')) || { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1, parte: hoje.getDate() <= 15 ? 'Q1' : 'Q2' };
+  sa.value = ult.ano; sm.value = ult.mes; sp.value = ult.parte;
+  [sa, sm, sp].forEach(el => el.onchange = trocarPeriodo);
+  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => aba(b.dataset.t));
+  document.getElementById('btnApi').onclick = () => buscarApi();
+  await trocarPeriodo();
+  if (S.api.auto && S.api.url) buscarApi(true);
+}
+function aba(t) {
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('main section').forEach(s => s.classList.toggle('on', s.id === 't-' + t));
+}
+async function trocarPeriodo() {
+  S.per = { ano: +document.getElementById('selAno').value, mes: +document.getElementById('selMes').value, parte: document.getElementById('selParte').value };
+  await DB.set('ultimoPeriodo', S.per);
+  S.periodo = (await DB.get(chave(S.per))) || { dados: {}, totais: {}, origem: {}, lanc: {}, retencao: 0 };
+  recalcular();
+}
+async function salvarPeriodo() { await DB.set(chave(S.per), S.periodo); }
+function recalcular() {
+  S.calc = criarMotor(S.premissas).calcular(S.periodo.dados, S.per, S.periodo.lanc, S.periodo.retencao);
+  const n = Object.values(S.periodo.dados).reduce((a, v) => a + (v ? v.length : 0), 0);
+  status(n ? `${MESES[S.per.mes - 1]}/${S.per.ano} · ${S.per.parte === 'M' ? 'mês' : S.per.parte} · ${n} linhas` : 'Sem dados neste período — importe em "Dados e integração"');
+  renderTudo();
+}
+function renderTudo() { renderPainel(); renderMedicos(); renderAcerto(); renderClinica(); renderPagos(); renderPremissas(); renderDados(); }
+
+/* ---------- PAINEL ---------- */
+let charts = {};
+function renderPainel() {
+  const c = S.calc, k = c.clinica, ms = c.medicos;
+  const kp = [['Bruto total', k.bruto], ['Líquido', k.liquido], ['Repasse aos médicos', ms.reduce((a, m) => a + c.acerto[m].total, 0)],
+    ['Ficou com a clínica', k.ficouClinica], ['Despesas da operação', k.despesas], ['Resultado operacional', k.resultadoOperacional],
+    ['Serviço da dívida', k.divida], ['Quanto sobrou', k.sobrou]];
+  document.getElementById('t-painel').innerHTML = `
+    <div class="kpis">${kp.map(([l, v]) => `<div class="kpi"><div class="l">${l}</div><div class="v ${v < 0 ? 'neg' : ''}">R$ ${fmt(v)}</div></div>`).join('')}</div>
+    <div class="grid2">
+      <div class="card"><h2>Repasse por médico</h2><canvas id="chMed"></canvas></div>
+      <div class="card"><h2>Para onde foi o líquido</h2><canvas id="chLiq"></canvas></div>
+    </div>
+    <div class="card"><h2>Por área</h2><div class="tw"><table>
+      <tr><th style="text-align:left">Área</th><th>Bruto</th><th>Líquido</th><th>Médicos</th><th>Clínica</th><th>% clínica</th></tr>
+      ${k.colunas.map(([a, n]) => { const o = k.res[a]; const med = o.executores + o.solicitantes + o.maquina;
+        return `<tr><td>${n}</td>${td(o.bruto)}${td(o.liquido)}${td(med)}${td(o.clinica)}<td class="n pct">${o.liquido ? fmtP(o.clinica / o.liquido) : '-'}</td></tr>`; }).join('')}
+      <tr class="tot"><td>Total</td>${td(k.bruto)}${td(k.liquido + k.retencao)}${td(k.executores + k.solicitantes + k.maquina)}${td(k.ficouClinica + k.retencao)}<td></td></tr>
+    </table></div></div>`;
+  Object.values(charts).forEach(ch => ch.destroy()); charts = {};
+  if (window.Chart) {
+    charts.m = new Chart(document.getElementById('chMed'), { type: 'bar', data: { labels: ms.map(curto),
+      datasets: [{ label: 'Executor', data: ms.map(m => r2(c.acerto[m].executor)), backgroundColor: '#1F3864' },
+                 { label: 'Solicitante', data: ms.map(m => r2(c.acerto[m].recebidoSol)), backgroundColor: '#5B9BD5' },
+                 { label: 'Máquina', data: ms.map(m => r2(c.acerto[m].maquina)), backgroundColor: '#A9C4EB' }] },
+      options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { x: { stacked: true }, y: { stacked: true } } } });
+    const parts = [['Médicos executores', k.executores], ['Médicos solicitantes', k.solicitantes], ['Máquina Dr. Nilton', k.maquina], ['Comissão', k.comissao], ['Clínica', k.ficouClinica]];
+    charts.l = new Chart(document.getElementById('chLiq'), { type: 'doughnut', data: { labels: parts.map(p => p[0]),
+      datasets: [{ data: parts.map(p => r2(p[1])), backgroundColor: ['#1F3864', '#5B9BD5', '#A9C4EB', '#F4B183', '#70AD47'] }] },
+      options: { plugins: { legend: { position: 'bottom' } } } });
+  }
+}
+
+/* ---------- RESUMO MÉDICOS ---------- */
+function renderMedicos() {
+  const c = S.calc, ms = c.medicos, cols = [...ms, '__TOTAL__'];
+  const areas = S.area === 'todas' ? AREAS : AREAS.filter(([a]) => a === S.area);
+  const agg = (m) => { const o = {}; for (const [a] of areas) for (const [k, v] of Object.entries(c.porArea[a][m])) o[k] = (o[k] || 0) + v; return o; };
+  const A = Object.fromEntries(cols.map(m => [m, agg(m)]));
+  const linha = (lab, f, cls = '', pctDe = null) => `<tr class="${cls}"><td class="lab">${lab}</td>${cols.map(m => {
+    const v = f(A[m], m); const p = pctDe ? pctDe(A[m]) : null;
+    return `<td class="n pct">${p ? fmtP(v / p) : ''}</td>${td(v)}`; }).join('')}</tr>`;
+  const html = `
+  <div class="card"><div class="row"><b>Área:</b><div class="chips" id="chipsArea">
+    ${[['todas', 'Todas'], ...AREAS].map(([a, n]) => `<button data-a="${a}" class="${S.area === a ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+  <div class="tw"><table>
+    <tr><th style="text-align:left">${S.area === 'todas' ? 'Todas as áreas' : AREAS.find(x => x[0] === S.area)[1]}</th>
+      ${cols.map(m => `<th colspan="2">${m === '__TOTAL__' ? 'TOTAL' : esc(m)}</th>`).join('')}</tr>
+    <tr class="prod"><td class="lab">(+) Produção bruta — caixa</td>${cols.map(m => `<td></td>${td(A[m].caixa)}`).join('')}</tr>
+    <tr class="prod"><td class="lab">(+) Produção bruta — convênio</td>${cols.map(m => `<td></td>${td(A[m].conv)}`).join('')}</tr>
+    ${linha('(=) Produção bruta', o => o.bruto, 'prod')}
+    ${linha('(−) Imposto', o => -o.imposto)}
+    ${linha('(−) Taxa de cartão', o => -o.cartao)}
+    ${linha('(−) Custo de insumos', o => -o.insumo)}
+    ${linha('(=) LÍQUIDO', o => o.liquido, 'tot')}
+    ${linha('(−) Repasse ao médico que solicitou (20%) — % do líquido', o => -o.repSol, '', o => -o.liquido)}
+    ${linha('(=) BASE DA DIVISÃO — % do líquido', o => o.base, 'tot', o => o.liquido)}
+    ${linha('(=) Repasse médico executor — % da base', o => o.executor, '', o => o.base)}
+    ${linha('(−) Comissão comercial (sai da clínica) — % do líquido', o => -o.comissao, '', o => -o.liquido)}
+    ${linha('(−) Máquina do Dr. Nilton (sai da clínica) — % do líquido', o => -o.maquinaSai, '', o => -o.liquido)}
+    ${linha('(=) Repasse clínica — % do líquido', o => o.clinica, '', o => o.liquido)}
+    <tr class="sec"><td colspan="${1 + cols.length * 2}">QUANTO O MÉDICO RECEBE</td></tr>
+    ${linha('Parte dele como executor', o => o.executor)}
+    ${linha('Recebido como solicitante (pedidos que outro médico executou)', o => o.recebidoSol)}
+    ${linha('Repasse da máquina (Dr. Nilton)', o => o.maquinaRecebe)}
+    ${linha('TOTAL DO MÉDICO', o => o.executor + o.recebidoSol + o.maquinaRecebe, 'tot')}
+    <tr class="sec"><td colspan="${1 + cols.length * 2}">CONFERÊNCIA COM O TOTVS</td></tr>
+    ${linha('Repasse do executor calculado pelo Totvs', o => o.executorTotvs, 'memo')}
+    ${linha('Diferença (regras da clínica − Totvs)', o => o.executor - o.executorTotvs, 'memo')}
+  </table></div>
+  <p class="muted">Diferença contra o Totvs = repasse a médico de fora em exames, comissão descontada da base do médico e repasse/comissão calculados também sobre o insumo — pontos a ajustar com o suporte.
+  ${c.outrosSolicitantes ? `<br>Repasse pago a médicos solicitantes de fora (fora de exames): <b>R$ ${fmt(c.outrosSolicitantes)}</b>.` : ''}
+  ${c.semDono.length ? `<br><span class="tag warn">${c.semDono.length} linha(s) com executor fora da tabela de médicos — 100% clínica.</span>` : ''}</p></div>`;
+  const el = document.getElementById('t-medicos'); el.innerHTML = html;
+  el.querySelectorAll('#chipsArea button').forEach(b => b.onclick = () => { S.area = b.dataset.a; renderMedicos(); });
+}
+
+/* ---------- ACERTO ---------- */
+function renderAcerto() {
+  const c = S.calc, ms = c.medicos, P = S.premissas, lanc = S.periodo.lanc;
+  const inp = (m, campo, sub) => { const v = sub ? (((lanc[m] || {}).pf || {})[sub] || 0) : ((lanc[m] || {})[campo] || 0);
+    return `<td class="n"><input class="in" data-m="${esc(m)}" data-c="${campo}" data-s="${sub || ''}" value="${v ? String(v).replace('.', ',') : ''}" placeholder="0,00"></td>`; };
+  const sumC = f => ms.reduce((a, m) => a + f(m), 0);
+  const html = `<div class="card"><h2>Acerto com os médicos — ${MESES[S.per.mes - 1]}/${S.per.ano} (${S.per.parte === 'M' ? 'mês' : S.per.parte})</h2>
+  <div class="tw"><table>
+    <tr><th style="text-align:left"></th>${ms.map(m => `<th>${esc(m)}</th>`).join('')}<th>TOTAL</th></tr>
+    <tr class="sec"><td colspan="${ms.length + 2}">1. REPASSE DEVIDO POR CONVÊNIO (executor + solicitante + máquina)</td></tr>
+    ${P.gruposOrdem.map(g => `<tr><td class="lab">${g}</td>${ms.map(m => td(c.acerto[m].porGrupo[g])).join('')}${td(sumC(m => c.acerto[m].porGrupo[g]))}</tr>`).join('')}
+    <tr class="tot"><td>(=) TOTAL DO REPASSE DEVIDO</td>${ms.map(m => td(c.acerto[m].total)).join('')}${td(sumC(m => c.acerto[m].total))}</tr>
+    <tr class="sec"><td colspan="${ms.length + 2}">2. JÁ RECEBIDO NA CONTA PF (convênio pago direto ao médico)</td></tr>
+    ${P.gruposOrdem.filter(g => g !== 'Particular').map(g => `<tr><td class="lab">(−) ${g} — líquido recebido na conta</td>${ms.map(m => inp(m, 'pf', g)).join('')}${td(sumC(m => num(((lanc[m] || {}).pf || {})[g])))}</tr>`).join('')}
+    <tr class="tot"><td>(=) TOTAL JÁ RECEBIDO NA CONTA PF</td>${ms.map(m => td(c.acerto[m].recebidoPF)).join('')}${td(sumC(m => c.acerto[m].recebidoPF))}</tr>
+    <tr class="sec"><td colspan="${ms.length + 2}">3. JÁ PAGO PELA CLÍNICA NO PERÍODO</td></tr>
+    <tr><td class="lab">(−) Adiantamentos / Pix / transferências</td>${ms.map(m => inp(m, 'adiantamentos')).join('')}${td(sumC(m => num((lanc[m] || {}).adiantamentos)))}</tr>
+    <tr><td class="lab">(−) Outros descontos combinados</td>${ms.map(m => inp(m, 'outros')).join('')}${td(sumC(m => num((lanc[m] || {}).outros)))}</tr>
+    <tr class="tot"><td>(=) TOTAL JÁ PAGO</td>${ms.map(m => td(c.acerto[m].jaPago)).join('')}${td(sumC(m => c.acerto[m].jaPago))}</tr>
+    <tr class="sec"><td colspan="${ms.length + 2}">4. SALDO</td></tr>
+    <tr class="tot"><td>(=) SALDO A PAGAR PELA CLÍNICA (negativo = médico recebeu a mais)</td>${ms.map(m => td(c.acerto[m].saldo)).join('')}${td(sumC(m => c.acerto[m].saldo))}</tr>
+  </table></div>
+  <p class="muted">Particular: acerto no mês seguinte. Convênio: acerto quando o convênio paga (direto na conta PF do médico). Dra. Luiza: lançar só a parte de Gramado.</p>
+  <div class="row"><label class="muted">Observações</label></div>
+  <textarea id="obsAcerto" style="width:100%;min-height:70px" class="txt">${esc(S.periodo.obs || '')}</textarea></div>`;
+  const el = document.getElementById('t-acerto'); el.innerHTML = html;
+  el.querySelectorAll('input.in').forEach(i => i.onchange = async () => {
+    const m = i.dataset.m, cpo = i.dataset.c, sub = i.dataset.s, v = num(i.value);
+    lanc[m] = lanc[m] || {}; if (sub) { lanc[m].pf = lanc[m].pf || {}; lanc[m].pf[sub] = v; } else lanc[m][cpo] = v;
+    await salvarPeriodo(); recalcular(); aba('acerto');
+  });
+  el.querySelector('#obsAcerto').onchange = async e => { S.periodo.obs = e.target.value; await salvarPeriodo(); };
+}
+
+/* ---------- RESULTADO CLÍNICA ---------- */
+function renderClinica() {
+  const k = S.calc.clinica, P = S.premissas, cols = k.colunas;
+  const L = (lab, f, cls = '', total = null) => `<tr class="${cls}"><td class="lab">${lab}</td>${cols.map(([a]) => td(f(k.res[a]))).join('')}${td(total != null ? total : cols.reduce((x, [a]) => x + f(k.res[a]), 0))}<td class="n pct">${k.bruto ? fmtP((total != null ? total : cols.reduce((x, [a]) => x + f(k.res[a]), 0)) / k.bruto) : ''}</td></tr>`;
+  const T = (lab, v, cls = '') => `<tr class="${cls}"><td class="lab">${lab}</td>${cols.map(() => '<td></td>').join('')}${td(v)}<td class="n pct">${k.bruto ? fmtP(v / k.bruto) : ''}</td></tr>`;
+  const sec = t => `<tr class="sec"><td colspan="${cols.length + 3}">${t}</td></tr>`;
+  const g = k.porGrupoPago;
+  const html = `<div class="card"><h2>Resultado da clínica — ${MESES[S.per.mes - 1]}/${S.per.ano} (${S.per.parte === 'M' ? 'mês' : S.per.parte})</h2><div class="tw"><table>
+    <tr><th style="text-align:left"></th>${cols.map(([, n]) => `<th>${n}</th>`).join('')}<th>TOTAL</th><th>% bruto</th></tr>
+    ${sec('1. FATURAMENTO BRUTO')}
+    ${L('Caixa (particular e coparticipação)', o => o.caixa)}${L('Convênio', o => o.conv)}${L('(=) BRUTO TOTAL', o => o.bruto, 'tot')}
+    ${sec('2. DESCONTOS ANTES DO LÍQUIDO')}
+    ${L('(−) Impostos sobre a nota', o => -o.imposto)}${L('(−) Taxa de cartão', o => -o.cartao)}${L('(−) Custo de insumos', o => -o.insumo)}
+    <tr><td class="lab">(−) Retenção / glosa de convênio (o Totvs não desconta — digitar)</td>${cols.map(() => '<td></td>').join('')}<td class="n"><input class="in" id="inRet" value="${k.retencao ? String(k.retencao).replace('.', ',') : ''}" placeholder="0,00"></td><td></td></tr>
+    ${L('(=) LÍQUIDO', o => o.liquido, 'tot', k.liquido)}
+    ${sec('3. PARA ONDE FOI O LÍQUIDO')}
+    ${L('(−) Médicos executores', o => -o.executores)}${L('(−) Médicos que solicitaram (20%)', o => -o.solicitantes)}
+    ${L('(−) Dr. Nilton — 20% da máquina', o => -o.maquina)}${L('(−) Comissão comercial (sobre a venda)', o => -o.comissao)}
+    ${L('(=) FICOU COM A CLÍNICA', o => o.clinica, 'tot', k.ficouClinica)}
+    ${sec('4. DESPESAS DA OPERAÇÃO (aba Pagos, baixas no período)')}
+    ${P.gruposDespesa.map(x => T('(−) ' + x, g[x] || 0)).join('')}
+    ${T('(=) TOTAL DAS DESPESAS', k.despesas, 'tot')}${T('(=) RESULTADO OPERACIONAL (antes da dívida)', k.resultadoOperacional, 'tot')}
+    ${sec('5. SERVIÇO DA DÍVIDA E APLICAÇÕES')}
+    ${P.gruposDivida.map(x => T('(−) ' + x, g[x] || 0)).join('')}
+    ${T('(=) QUANTO SOBROU', k.sobrou, 'tot')}
+    ${sec('6. PAGOS QUE NÃO ENTRAM NO RESULTADO (conferência)')}
+    ${Object.keys(g).filter(x => x.startsWith('FORA:')).map(x => T(x.replace('FORA: ', ''), g[x], 'memo')).join('')}
+    ${T('Pagamentos sem grupo (VERIFICAR)', k.verificar, k.verificar ? '' : 'memo')}
+    ${T('(=) Total pago no período', k.totalPago, 'tot')}
+    <tr class="memo"><td class="lab">Conferência: total pago − (despesas + dívida + fora + verificar)</td>${cols.map(() => '<td></td>').join('')}<td class="n ${k.conferenciaPagos ? 'neg' : 'ok'}">${k.conferenciaPagos ? fmt(k.conferenciaPagos) : 'OK'}</td><td></td></tr>
+  </table></div></div>`;
+  const el = document.getElementById('t-clinica'); el.innerHTML = html;
+  el.querySelector('#inRet').onchange = async e => { S.periodo.retencao = num(e.target.value); await salvarPeriodo(); recalcular(); aba('clinica'); };
+}
+
+/* ---------- PAGOS ---------- */
+function renderPagos() {
+  const pg = S.calc.pagos.filter(p => p.noPeriodo);
+  const f = S.filtroPagos; const lista = pg.filter(p => f === 'todos' || p.secao === f || p.grupo === f);
+  const porG = {}; pg.forEach(p => { porG[p.grupo] = (porG[p.grupo] || 0) + p.valor; });
+  const html = `<div class="card"><h2>Pagos do período (${pg.length} baixas · R$ ${fmt(pg.reduce((a, p) => a + p.valor, 0))})</h2>
+    <div class="chips" id="chipsPg">${['todos', 'Despesa', 'Dívida', 'Fora', 'Verificar'].map(x => `<button data-f="${x}" class="${f === x ? 'on' : ''}">${x === 'todos' ? 'Todos' : x}</button>`).join('')}</div>
+    <h3>Por grupo</h3><div class="tw"><table><tr><th style="text-align:left">Grupo</th><th>Seção</th><th>Valor</th></tr>
+      ${Object.entries(porG).sort((a, b) => b[1] - a[1]).map(([g, v]) => `<tr><td>${esc(g)}</td><td>${esc(criarMotor(S.premissas).secaoPago(g))}</td>${td(v)}</tr>`).join('')}</table></div>
+    <h3>Baixas (${lista.length})</h3><div class="tw"><table>
+      <tr><th>Baixa</th><th style="text-align:left">Nome</th><th style="text-align:left">Histórico</th><th>Tipo</th><th>Centro de custo</th><th>Valor</th><th style="text-align:left">Grupo</th></tr>
+      ${lista.map(p => `<tr><td>${esc(p['Baixa'].split('-').reverse().join('/'))}</td><td>${esc(p['Nome'])}</td><td style="white-space:normal;max-width:360px">${esc(p['Histórico'])}</td><td>${esc(p['Tipo do Documento'])}</td><td>${esc(p['CENTRO DE CUSTOS'] ?? p['Centro de custos'])}</td>${td(p.valor)}<td>${p.grupo === 'VERIFICAR' ? '<span class="tag bad">VERIFICAR</span>' : esc(p.grupo)}</td></tr>`).join('')}
+    </table></div><p class="muted">Para mudar o grupo de um pagamento, inclua uma palavra do Nome/Histórico em Premissas → Regras dos pagos (vale a última regra que servir).</p></div>`;
+  const el = document.getElementById('t-pagos'); el.innerHTML = html;
+  el.querySelectorAll('#chipsPg button').forEach(b => b.onclick = () => { S.filtroPagos = b.dataset.f; renderPagos(); });
+}
+
+/* ---------- PREMISSAS (editáveis) ---------- */
+function renderPremissas() {
+  const P = S.premissas;
+  const pctIn = (v, attrs) => `<input class="in" style="width:70px" ${attrs} value="${(num(v) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}">`;
+  const html = `
+  <div class="card"><h2>1. % do médico executor por área (sobre a base: líquido − repasse ao solicitante)</h2><div class="tw"><table>
+    <tr><th style="text-align:left">Médico (nome igual ao do Totvs)</th>${AREAS.map(([, n]) => `<th>${n} %</th>`).join('')}<th></th></tr>
+    ${Object.entries(P.medicos).map(([m, t]) => `<tr><td>${esc(m)}</td>${AREAS.map(([a]) => `<td class="n">${pctIn(t[a], `data-pm="${esc(m)}" data-pa="${a}"`)}</td>`).join('')}<td><button class="btn sm sec" data-delmed="${esc(m)}">remover</button></td></tr>`).join('')}
+  </table></div><div class="row"><input class="txt" id="novoMed" placeholder="NOME COMPLETO DO MÉDICO" style="width:320px"><button class="btn sm" id="addMed">Adicionar médico</button></div></div>
+
+  <div class="card"><h2>2. Exceções de % em lentes</h2><div class="tw"><table>
+    <tr><th>1º nome</th><th>Tipo de lente</th><th>% do médico</th><th></th></tr>
+    ${P.excecoesLentes.map((e, i) => `<tr><td><input class="txt" data-ex="${i}" data-k="nomeCurto" value="${esc(e.nomeCurto)}"></td>
+      <td><select class="txt" data-ex="${i}" data-k="tipo">${['Lente', 'Escleral', 'Teste de Lente'].map(t => `<option ${t === e.tipo ? 'selected' : ''}>${t}</option>`).join('')}</select></td>
+      <td class="n">${pctIn(e.pct, `data-ex="${i}" data-k="pct"`)}</td><td><button class="btn sm sec" data-delex="${i}">remover</button></td></tr>`).join('')}
+  </table></div><button class="btn sm" id="addEx">Adicionar exceção</button>
+  <p class="muted">Tipo "Lente" = gelatinosa e demais (tudo que não é escleral nem teste).</p></div>
+
+  <div class="card"><h2>3. Palavras e parâmetros</h2>
+    <div class="row"><b style="width:280px">Itens que são PROCEDIMENTO (o resto é cirurgia)</b><input class="txt" id="pProc" style="flex:1" value="${esc(P.palavrasProcedimento.join(';'))}"></div>
+    <div class="row"><b style="width:280px">Palavra da lente escleral</b><input class="txt" id="pEscl" value="${esc(P.tiposLente[0].palavra)}">
+      <b>Palavra do teste de lente</b><input class="txt" id="pTeste" value="${esc(P.tiposLente[1].palavra)}"></div>
+    <div class="row"><b style="width:280px">Máquina: dono</b><select class="txt" id="pMaqDono">${Object.keys(P.medicos).map(m => `<option ${m === P.maquina.dono ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>
+      <b>% do líquido</b>${pctIn(P.maquina.pct, 'id="pMaqPct"')}</div>
+    <div class="row"><b style="width:280px">Máquina: palavras dos exames</b><input class="txt" id="pMaqPal" style="flex:1" value="${esc(P.maquina.palavras.join(';'))}"></div>
+    <div class="row"><b style="width:280px">Comissão comercial (% sobre a venda)</b>${pctIn(P.comissaoPct, 'id="pCom"')}</div>
+    <p class="muted">Listas separadas por ponto e vírgula. A busca não diferencia maiúsculas de minúsculas.</p></div>
+
+  <div class="card"><h2>4. Grupo de convênio</h2><div class="tw"><table><tr><th>Convênio no Totvs</th><th>Grupo</th><th></th></tr>
+    ${Object.entries(P.convenios).map(([cv, g]) => `<tr><td>${esc(cv)}</td><td><select class="txt" data-cv="${esc(cv)}">${P.gruposOrdem.map(x => `<option ${x === g ? 'selected' : ''}>${x}</option>`).join('')}</select></td><td><button class="btn sm sec" data-delcv="${esc(cv)}">remover</button></td></tr>`).join('')}
+  </table></div><div class="row"><input class="txt" id="novoCv" placeholder="NOME DO CONVÊNIO NO TOTVS"><select class="txt" id="novoCvG">${P.gruposOrdem.map(x => `<option>${x}</option>`).join('')}</select><button class="btn sm" id="addCv">Adicionar</button></div>
+  <p class="muted">O que não estiver na lista vira "${esc(P.grupoPadrao)}".</p></div>
+
+  <div class="card"><h2>5. Regras dos pagos (vale a ÚLTIMA que servir)</h2>
+    <p class="muted">Procura a palavra em Tipo | Nome | Histórico | Centro de custo. Regras gerais em cima, específicas embaixo.</p><div class="tw"><table>
+    <tr><th>#</th><th style="text-align:left">Palavra</th><th style="text-align:left">Grupo</th><th></th></tr>
+    ${P.pagosRegras.map(([w, g], i) => `<tr><td>${i + 1}</td><td><input class="txt" data-rg="${i}" data-k="0" value="${esc(w)}"></td>
+      <td><select class="txt" data-rg="${i}" data-k="1">${gruposPagosTodos().map(x => `<option ${x === g ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></td>
+      <td><button class="btn sm sec" data-up="${i}">↑</button> <button class="btn sm sec" data-dn="${i}">↓</button> <button class="btn sm sec" data-delrg="${i}">×</button></td></tr>`).join('')}
+  </table></div><button class="btn sm" id="addRg">Adicionar regra no fim</button></div>
+
+  <div class="card"><h2>Backup das premissas</h2><div class="row">
+    <button class="btn" id="expP">Exportar premissas (JSON)</button>
+    <label class="btn sec">Importar premissas<input type="file" id="impP" accept=".json" hidden></label>
+    <button class="btn sec" id="resetP">Voltar ao padrão</button></div></div>`;
+  const el = document.getElementById('t-premissas'); el.innerHTML = html;
+  const salvar = async () => { await DB.set('premissas', S.premissas); recalcular(); aba('premissas'); };
+  const pv = i => num(i.value) / 100;
+  el.querySelectorAll('[data-pm]').forEach(i => i.onchange = () => { P.medicos[i.dataset.pm][i.dataset.pa] = pv(i); salvar(); });
+  el.querySelectorAll('[data-delmed]').forEach(b => b.onclick = () => { if (confirm('Remover ' + b.dataset.delmed + '?')) { delete P.medicos[b.dataset.delmed]; salvar(); } });
+  el.querySelector('#addMed').onclick = () => { const m = UP(el.querySelector('#novoMed').value).trim(); if (m && !P.medicos[m]) { P.medicos[m] = { consultas: 0.6, exames: 0.3, cirurgias: 0.7, procedimentos: 0.7, lentes: 0.3 }; salvar(); } };
+  el.querySelectorAll('[data-ex]').forEach(i => i.onchange = () => { const e = P.excecoesLentes[+i.dataset.ex], k = i.dataset.k;
+    e[k] = k === 'pct' ? pv(i) : k === 'nomeCurto' ? UP(i.value).trim() : i.value; salvar(); });
+  el.querySelectorAll('[data-delex]').forEach(b => b.onclick = () => { P.excecoesLentes.splice(+b.dataset.delex, 1); salvar(); });
+  el.querySelector('#addEx').onclick = () => { P.excecoesLentes.push({ nomeCurto: '', tipo: 'Lente', pct: 0.3 }); salvar(); };
+  const lista = id => el.querySelector(id).value.split(';').map(s => s).filter(s => s.trim() !== '');
+  el.querySelector('#pProc').onchange = () => { P.palavrasProcedimento = lista('#pProc'); salvar(); };
+  el.querySelector('#pEscl').onchange = e => { P.tiposLente[0].palavra = e.target.value; salvar(); };
+  el.querySelector('#pTeste').onchange = e => { P.tiposLente[1].palavra = e.target.value; salvar(); };
+  el.querySelector('#pMaqDono').onchange = e => { P.maquina.dono = e.target.value; salvar(); };
+  el.querySelector('#pMaqPct').onchange = e => { P.maquina.pct = pv(e.target); salvar(); };
+  el.querySelector('#pMaqPal').onchange = () => { P.maquina.palavras = lista('#pMaqPal'); salvar(); };
+  el.querySelector('#pCom').onchange = e => { P.comissaoPct = pv(e.target); salvar(); };
+  el.querySelectorAll('[data-cv]').forEach(s => s.onchange = () => { P.convenios[s.dataset.cv] = s.value; salvar(); });
+  el.querySelectorAll('[data-delcv]').forEach(b => b.onclick = () => { delete P.convenios[b.dataset.delcv]; salvar(); });
+  el.querySelector('#addCv').onclick = () => { const c = UP(el.querySelector('#novoCv').value).trim(); if (c) { P.convenios[c] = el.querySelector('#novoCvG').value; salvar(); } };
+  el.querySelectorAll('[data-rg]').forEach(i => i.onchange = () => { P.pagosRegras[+i.dataset.rg][+i.dataset.k] = i.value; salvar(); });
+  el.querySelectorAll('[data-delrg]').forEach(b => b.onclick = () => { P.pagosRegras.splice(+b.dataset.delrg, 1); salvar(); });
+  el.querySelectorAll('[data-up]').forEach(b => b.onclick = () => { const i = +b.dataset.up; if (i > 0) { const r = P.pagosRegras; [r[i - 1], r[i]] = [r[i], r[i - 1]]; salvar(); } });
+  el.querySelectorAll('[data-dn]').forEach(b => b.onclick = () => { const i = +b.dataset.dn, r = P.pagosRegras; if (i < r.length - 1) { [r[i + 1], r[i]] = [r[i], r[i + 1]]; salvar(); } });
+  el.querySelector('#addRg').onclick = () => { P.pagosRegras.push(['', P.gruposDespesa[0]]); salvar(); };
+  el.querySelector('#expP').onclick = () => baixar('premissas-gco.json', JSON.stringify(S.premissas, null, 2));
+  el.querySelector('#impP').onchange = async e => { try { S.premissas = JSON.parse(await e.target.files[0].text()); salvar(); } catch (x) { alert('Arquivo inválido'); } };
+  el.querySelector('#resetP').onclick = () => { if (confirm('Voltar todas as premissas ao padrão?')) { S.premissas = JSON.parse(JSON.stringify(DEFAULT_PREMISSAS)); salvar(); } };
+}
+function gruposPagosTodos() {
+  const P = S.premissas; const set = new Set([...P.gruposDespesa, ...P.gruposDivida, ...P.pagosRegras.map(r => r[1])]);
+  ['FORA: imposto da nota (já descontado no líquido)', 'FORA: insumo de lente (já descontado no líquido)', 'FORA: adiantamento de paciente'].forEach(x => set.add(x));
+  return [...set];
+}
+
+/* ---------- DADOS E INTEGRAÇÃO ---------- */
+function renderDados() {
+  const d = S.periodo.dados, t = S.periodo.totais || {}, o = S.periodo.origem || {};
+  const conf = (rel) => { const tg = t[rel]; if (!tg) return '<span class="muted">—</span>';
+    const campos = rel === 'pagos' ? [['Baixado Total', 'Baixado Total']] : rel === 'bloco' ? [['CAIXA', 'CAIXA'], ['VALOR_CONVENIO', 'VALOR_CONVENIO']] : [['CAIXA', 'CAIXA'], ['VALOR_A_RECEBER_CONVÊNIO', 'VALOR_A_RECEBER_CONVÊNIO'], ['LÍQUIDO', 'LÍQUIDO']];
+    return campos.map(([k]) => { const s = (d[rel] || []).reduce((a, l) => a + num(l[k]), 0); const ok = Math.abs(s - num(tg[k])) < 0.05;
+      return `<span class="tag ${ok ? '' : 'bad'}">${k.split('_')[0]} ${ok ? 'OK' : fmt(s) + ' ≠ ' + fmt(num(tg[k]))}</span>`; }).join(' '); };
+  const html = `
+  <div class="card"><h2>Importar relatórios do Totvs — ${MESES[S.per.mes - 1]}/${S.per.ano} (${S.per.parte === 'M' ? 'mês' : S.per.parte})</h2>
+    <label class="drop" style="display:block;cursor:pointer">Arraste ou clique para escolher os .xls do Totvs (pode escolher vários de uma vez) ou a planilha do fechamento inteira (.xlsx com as abas Consultas, Exames…)
+      <input type="file" id="arq" multiple accept=".xls,.xlsx" hidden></label>
+    <div class="tw" style="margin-top:12px"><table><tr><th style="text-align:left">Relatório</th><th>Linhas</th><th>Origem</th><th style="text-align:left">Conferência com o "Total Geral"</th><th></th></tr>
+      ${Object.entries(RELATORIOS).map(([k, r]) => `<tr><td>${r.nome}</td><td class="n">${(d[k] || []).length}</td><td>${esc(o[k] || '—')}</td><td>${conf(k)}</td><td>${(d[k] || []).length ? `<button class="btn sm sec" data-limpa="${k}">limpar</button>` : ''}</td></tr>`).join('')}
+    </table></div>
+    <p class="muted">O nome do arquivo define o relatório (consulta, exame, cirurgia/procedimento, lente, bloco, pago). Os dados ficam guardados neste navegador, por período.</p></div>
+
+  <div class="card"><h2>Integração com o Totvs (API no Railway)</h2>
+    <div class="row"><b style="width:120px">URL da API</b><input class="txt" id="apiUrl" style="flex:1" placeholder="https://bi-gco-production.up.railway.app" value="${esc(S.api.url)}"></div>
+    <div class="row"><b style="width:120px">Token</b><input class="txt" id="apiTok" type="password" style="flex:1" value="${esc(S.api.token)}"></div>
+    <div class="row"><label><input type="checkbox" id="apiAuto" ${S.api.auto ? 'checked' : ''}> Atualizar sozinho ao abrir a página</label><button class="btn sm" id="apiSalvar">Salvar</button><button class="btn sm sec" id="apiTestar">Buscar agora</button></div>
+    <p class="muted">Contrato esperado: <code>GET {URL}/totvs/{relatorio}?ini=AAAA-MM-DD&amp;fim=AAAA-MM-DD</code> com header <code>Authorization: Bearer {token}</code>,
+    para relatorio = consultas, exames, cirurgias_procedimentos, lentes, bloco, pagos. Resposta: JSON (array de linhas) com <b>as mesmas colunas dos relatórios do Totvs</b>
+    (DATA_ATENDIMENTO, CONVÊNIO, ITEM, MÉDICO_RESPONSÁVEL, … / Baixa, Baixado Total, …). Pagos filtrados pela data da baixa.
+    O token fica só neste navegador; a senha do banco do Totvs fica no Railway, nunca aqui.</p></div>
+
+  <div class="card"><h2>Backup completo</h2><div class="row">
+    <button class="btn" id="bkExp">Exportar tudo (JSON)</button><label class="btn sec">Importar backup<input type="file" id="bkImp" accept=".json" hidden></label></div></div>`;
+  const el = document.getElementById('t-dados'); el.innerHTML = html;
+  el.querySelector('#arq').onchange = e => importarArquivos([...e.target.files]);
+  const drop = el.querySelector('.drop');
+  drop.ondragover = e => { e.preventDefault(); }; drop.ondrop = e => { e.preventDefault(); importarArquivos([...e.dataTransfer.files]); };
+  el.querySelectorAll('[data-limpa]').forEach(b => b.onclick = async () => { delete S.periodo.dados[b.dataset.limpa]; delete S.periodo.totais[b.dataset.limpa]; await salvarPeriodo(); recalcular(); aba('dados'); });
+  el.querySelector('#apiSalvar').onclick = async () => { S.api = { url: el.querySelector('#apiUrl').value.trim().replace(/\/$/, ''), token: el.querySelector('#apiTok').value, auto: el.querySelector('#apiAuto').checked }; await DB.set('api', S.api); status('Integração salva'); };
+  el.querySelector('#apiTestar').onclick = async () => { el.querySelector('#apiSalvar').onclick(); buscarApi(); };
+  el.querySelector('#bkExp').onclick = async () => { const ks = await DB.keys(); const o = {}; for (const k of ks) if (k !== 'api') o[k] = await DB.get(k); baixar('backup-bi-gco.json', JSON.stringify(o)); };
+  el.querySelector('#bkImp').onchange = async e => { try { const o = JSON.parse(await e.target.files[0].text()); for (const [k, v] of Object.entries(o)) await DB.set(k, v);
+    S.premissas = (await DB.get('premissas')) || S.premissas; await trocarPeriodo(); aba('dados'); } catch (x) { alert('Backup inválido'); } };
+}
+function tipoPeloNome(nome) {
+  const n = UP(nome).normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (n.includes('PAGO')) return 'pagos'; if (n.includes('BLOCO')) return 'bloco';
+  if (n.includes('CIRURG') || n.includes('PROCED')) return 'cirurgias_procedimentos';
+  if (n.includes('EXAME')) return 'exames'; if (n.includes('LENTE')) return 'lentes'; if (n.includes('CONSULT')) return 'consultas';
+  return null;
+}
+async function importarArquivos(files) {
+  const msgs = [];
+  for (const f of files) {
+    try {
+      const wb = XLSX.read(await f.arrayBuffer(), { type: 'array', cellDates: true });
+      const abas = Object.entries(RELATORIOS).filter(([, r]) => wb.SheetNames.includes(r.aba));
+      if (abas.length >= 3) {          // planilha do fechamento inteira
+        for (const [k, r] of abas) {
+          const aoa = XLSX.utils.sheet_to_json(wb.Sheets[r.aba], { header: 1, raw: true, defval: '' });
+          try { const res = lerRelatorio(aoa, k); S.periodo.dados[k] = res.linhas; S.periodo.totais[k] = res.totalGeral; S.periodo.origem[k] = f.name + ' › ' + r.aba; msgs.push(`${r.nome}: ${res.linhas.length}`); }
+          catch (x) { msgs.push(`${r.nome}: ${x.message}`); }
+        }
+        continue;
+      }
+      const k = tipoPeloNome(f.name) || tipoPeloNome(wb.SheetNames[0]);
+      if (!k) { msgs.push(`${f.name}: não reconheci o relatório pelo nome`); continue; }
+      const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
+      const res = lerRelatorio(aoa, k);
+      S.periodo.dados[k] = res.linhas; S.periodo.totais[k] = res.totalGeral; S.periodo.origem[k] = f.name;
+      msgs.push(`${RELATORIOS[k].nome}: ${res.linhas.length} linhas`);
+    } catch (x) { msgs.push(`${f.name}: ${x.message}`); }
+  }
+  await salvarPeriodo(); recalcular(); aba('dados'); status(msgs.join(' · '));
+}
+async function buscarApi(silencioso) {
+  if (!S.api.url) { if (!silencioso) { alert('Configure a URL da API em "Dados e integração".'); aba('dados'); } return; }
+  const iv = intervalo(S.per); status('Buscando no Totvs…');
+  try {
+    for (const k of Object.keys(RELATORIOS)) {
+      const r = await fetch(`${S.api.url}/totvs/${k}?ini=${iso(iv.ini)}&fim=${iso(iv.fim)}`, { cache: 'no-store', headers: S.api.token ? { Authorization: 'Bearer ' + S.api.token } : {} });
+      if (!r.ok) throw new Error(`${k}: HTTP ${r.status}`);
+      const arr = await r.json();
+      const head = Object.keys(arr[0] || {}); const aoa = [head, ...arr.map(o => head.map(h => o[h]))];
+      if (!arr.length) { S.periodo.dados[k] = []; continue; }
+      const res = lerRelatorio(aoa, k); S.periodo.dados[k] = res.linhas; S.periodo.totais[k] = null; S.periodo.origem[k] = 'API ' + new Date().toLocaleString('pt-BR');
+    }
+    await salvarPeriodo(); recalcular(); status('Atualizado pela API em ' + new Date().toLocaleTimeString('pt-BR'));
+  } catch (x) { status('Erro na API: ' + x.message); }
+}
+function baixar(nome, txt) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'application/json' })); a.download = nome; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+
+init();
+</script>
+</body>
+</html>
