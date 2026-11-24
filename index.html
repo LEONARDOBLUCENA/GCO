@@ -18,6 +18,8 @@ header{background:var(--navy);color:#fff;padding:12px 16px;display:flex;gap:12px
 header h1{font-size:17px;margin:0 12px 0 0;white-space:nowrap}
 header select,header button{font-size:13px;padding:6px 8px;border-radius:6px;border:1px solid #9fb0cf}
 header .status{font-size:12px;opacity:.85;margin-left:auto}
+header .hbtn{font-size:13px;padding:6px 10px;border-radius:6px;border:1px solid #9fb0cf;background:#fff;color:var(--navy);cursor:pointer;white-space:nowrap}
+header .hbtn:hover{background:var(--light)}
 nav{display:flex;gap:4px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto;position:sticky;top:52px;z-index:9}
 nav button{border:0;background:transparent;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--muted);white-space:nowrap}
 nav button.on{background:var(--light);color:var(--navy);font-weight:bold}
@@ -78,6 +80,8 @@ canvas{max-height:300px}
   <select id="selAno"></select>
   <select id="selMes"></select>
   <span class="status" id="status">—</span>
+  <button class="hbtn" id="hBackup" title="Baixa um arquivo .json com todos os meses, lançamentos e premissas deste navegador">⤓ Backup</button>
+  <label class="hbtn" title="Carrega um arquivo de backup .json">⤒ Restaurar backup<input type="file" id="hRestore" accept=".json" hidden></label>
 </header>
 <nav id="nav">
   <button data-t="painel" class="on">Painel</button>
@@ -726,9 +730,8 @@ function renderDados() {
   el.querySelectorAll('[data-rel]').forEach(i => i.onchange = e => importarArquivos([...e.target.files], i.dataset.rel));
   el.querySelectorAll('[data-limpa]').forEach(b => b.onclick = async () => { delete S.periodo.dados[b.dataset.limpa]; delete S.periodo.totais[b.dataset.limpa]; await salvarPeriodo(); recalcular(); aba('dados'); });
   ligarDadosImportados(el);
-  el.querySelector('#bkExp').onclick = async () => { const ks = await DB.keys(); const o = {}; for (const k of ks) if (k !== 'api') o[k] = await DB.get(k); baixar('backup-bi-gco.json', JSON.stringify(o)); };
-  el.querySelector('#bkImp').onchange = async e => { try { const o = JSON.parse(await e.target.files[0].text()); for (const [k, v] of Object.entries(o)) await DB.set(k, v);
-    S.premissas = (await DB.get('premissas')) || S.premissas; await trocarPeriodo(); aba('dados'); } catch (x) { alert('Backup inválido'); } };
+  el.querySelector('#bkExp').onclick = fazerBackup;
+  el.querySelector('#bkImp').onchange = e => restaurarBackup(e.target);
 }
 /* ---------- dados importados + relatório por médico ---------- */
 const AREA_NOME = { consultas: 'Consultas', exames: 'Exames', cirurgias: 'Cirurgias', procedimentos: 'Procedimentos', lentes: 'Lentes', bloco: 'Bloco' };
@@ -854,6 +857,32 @@ async function buscarApi(silencioso) {
     await salvarPeriodo(); recalcular(); status('Atualizado pela API em ' + new Date().toLocaleTimeString('pt-BR'));
   } catch (x) { status('Erro na API: ' + x.message); }
 }
+/* ---------- backup e restauração (tudo que está guardado neste navegador) ---------- */
+async function fazerBackup() {
+  const ks = await DB.keys(); const o = {};
+  for (const k of ks) if (k !== 'api') o[k] = await DB.get(k);
+  const meses = ks.filter(k => String(k).startsWith('periodo:')).length;
+  const d = new Date(), dt = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  baixar(`backup-bi-gco-${dt}.json`, JSON.stringify(o));
+  if (!meses) alert('Backup gerado. Atenção: ainda não há meses salvos neste navegador (os dados de novembro embutidos no arquivo não precisam de backup).');
+}
+async function restaurarBackup(input) {
+  const f = input.files && input.files[0]; if (!f) return;
+  try {
+    const o = JSON.parse(await f.text());
+    if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('formato');
+    const ks = Object.keys(o), meses = ks.filter(k => k.startsWith('periodo:')).map(k => { const [a, m] = k.slice(8).split('-'); return `${m}/${a}`; });
+    if (!ks.length) throw new Error('vazio');
+    if (!confirm(`Restaurar o backup "${f.name}"?\n\n${meses.length ? 'Meses: ' + meses.join(', ') : 'Sem meses'}${ks.includes('premissas') ? '\nInclui as premissas' : ''}\n\nOs meses com o mesmo nome neste navegador serão substituídos pelos do backup.`)) return;
+    for (const [k, v] of Object.entries(o)) await DB.set(k, v);
+    S.premissas = (await DB.get('premissas')) || S.premissas;
+    await trocarPeriodo();
+    alert('Backup restaurado.');
+  } catch (x) { alert('Arquivo de backup inválido.'); }
+  finally { input.value = ''; }
+}
+document.getElementById('hBackup').onclick = fazerBackup;
+document.getElementById('hRestore').onchange = e => restaurarBackup(e.target);
 function baixar(nome, txt) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], { type: 'application/json' })); a.download = nome; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 
 init();
