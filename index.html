@@ -958,7 +958,7 @@ async function atualizarDoTotvs(soAcompanhar) {
         pct += (PESO[c.atual] || 0) * Math.min(0.9, dec / esp);
       }
       const feitosTxt = (c.feitos || []).map(f => `${NOME_REL[f.rel] || f.rel} ✓`).join(' · ');
-      const agora = c.rodando && c.atual ? `Buscando ${NOME_REL[c.atual] || c.atual} (${mmss(Date.now() - tAtual)})` : '';
+      const agora = c.rodando && c.atual ? `Buscando ${NOME_REL[c.atual] || c.atual}${c.detalhe ? ' · ' + c.detalhe : ''} (${mmss(Date.now() - tAtual)})` : '';
       progresso(c.rodando ? Math.min(pct, 99) : 100, [agora, feitosTxt].filter(Boolean).join('  —  ') + `  · total ${mmss(Date.now() - t0)}`);
       status(`Buscando no Totvs ${String(mes).padStart(2, '0')}/${ano}… ${agora}`);
       if (!c.rodando && c.periodo === chaveMes) {
