@@ -64,6 +64,12 @@ input.txt,select.txt{border:1px solid var(--line);border-radius:4px;padding:4px 
 .btn.sm{padding:3px 8px;font-size:12px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:6px 0}
 .muted{color:var(--muted);font-size:12px}
+.prog{position:sticky;top:56px;z-index:9;background:#fff;border-bottom:1px solid #dde3ee;padding:8px 16px;display:flex;align-items:center;gap:12px;font-size:13px;color:var(--navy)}
+.prog[hidden]{display:none}
+.prog .pb{flex:0 0 320px;height:12px;background:#e6ebf3;border-radius:6px;overflow:hidden}
+.prog .pf{height:100%;width:0;background:var(--navy);border-radius:6px;transition:width .6s}
+.prog .pp{font-weight:700;min-width:44px;text-align:right}
+.prog.erro .pf{background:var(--red)}
 .tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:var(--light);color:var(--navy)}
 .tag.warn{background:#FDEBD0;color:#9A5B00}
 .tag.bad{background:#FADBD8;color:var(--red)}
@@ -92,6 +98,7 @@ canvas{max-height:300px}
   <button data-t="premissas">Premissas</button>
   <button data-t="dados">Dados e integração</button>
 </nav>
+<div class="prog" id="prog" hidden><span class="pp" id="progPct">0%</span><div class="pb"><div class="pf" id="progBar"></div></div><span id="progTxt"></span></div>
 <main>
   <section id="t-painel" class="on"></section>
   <section id="t-medicos"></section>
@@ -404,7 +411,7 @@ async function init() {
   [sa, sm].forEach(el => el.onchange = trocarPeriodo);
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => aba(b.dataset.t));
   await trocarPeriodo();
-
+  retomarColeta();
 }
 function aba(t) {
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
@@ -429,6 +436,11 @@ function completarPacientes(per, seed) {
     if (!linhas.every((l, i) => l.DATA_ATENDIMENTO === s[i].DATA_ATENDIMENTO && l.ITEM === s[i].ITEM)) continue;
     linhas.forEach((l, i) => { if (s[i].PACIENTE) l.PACIENTE = s[i].PACIENTE; });
   }
+}
+async function retomarColeta() {
+  if (!S.api || !S.api.url || !S.api.token) return;
+  try { const j = await apiGet(`/status?ano=${S.per.ano}&mes=${S.per.mes}`); const c = j.coleta || {};
+    if (c.rodando && c.periodo === `${S.per.ano}-${String(S.per.mes).padStart(2, '0')}`) atualizarDoTotvs(true); } catch (x) {}
 }
 async function salvarPeriodo() { await DB.set(chave(S.per), S.periodo); }
 function recalcular() {
@@ -874,10 +886,11 @@ function ligarIntegracao(el) {
     try { const j = await apiGet(`/status?ano=${S.per.ano}&mes=${S.per.mes}`);
       const p = j.periodo || {}; const n = Object.values(p).filter(Boolean).length;
       msg(`Conectado. ${MESES[S.per.mes - 1]}/${S.per.ano}: ${n} de ${Object.keys(p).length} relatórios já coletados${j.coleta && j.coleta.rodando ? ' · coleta em andamento' : ''}.`);
+      if (j.coleta && j.coleta.rodando && j.coleta.periodo === `${S.per.ano}-${String(S.per.mes).padStart(2, '0')}`) atualizarDoTotvs(true);
     } catch (x) { msg('Falhou: ' + x.message); }
   };
   el.querySelector('#apiCarregar').onclick = () => buscarApi(false);
-  el.querySelector('#apiColetar').onclick = () => atualizarDoTotvs();
+  el.querySelector('#apiColetar').onclick = () => atualizarDoTotvs(false);
 }
 async function apiGet(caminho, metodo) {
   if (!S.api.url) throw new Error('Endereço do robô não configurado');
@@ -908,28 +921,58 @@ async function buscarApi(silencioso) {
     if (document.getElementById('t-dados').classList.contains('on')) renderDados();
     const t = Object.keys(novos).length ? `Carregado do Totvs em ${quando}` : 'Nada carregado';
     status(falta.length ? `${t}. Ainda não coletado no robô: ${falta.join(', ')} — use "Atualizar do Totvs agora".` : t);
-    if (falta.length && !silencioso && confirm(`O robô ainda não coletou ${falta.join(', ')} de ${MESES[S.per.mes - 1]}/${S.per.ano}. Buscar no Totvs agora? (leva alguns minutos)`)) return atualizarDoTotvs();
+    if (falta.length && !silencioso && confirm(`O robô ainda não coletou ${falta.join(', ')} de ${MESES[S.per.mes - 1]}/${S.per.ano}. Buscar no Totvs agora? (leva alguns minutos)`)) return atualizarDoTotvs(false);
     return true;
   } catch (x) { status('Erro na integração: ' + x.message); if (!silencioso) alert('Erro na integração: ' + x.message); return false; }
 }
-async function atualizarDoTotvs() {
-  const ano = S.per.ano, mes = S.per.mes;
+const NOME_REL = { consultas: 'Consultas', exames: 'Exames', bloco: 'Bloco', pagos: 'Pagos', cirurgias_procedimentos: 'Cirurgias e Procedimentos', lentes: 'Lentes' };
+function progresso(pct, txt, erro) {
+  const p = document.getElementById('prog'); p.hidden = false; p.classList.toggle('erro', !!erro);
+  document.getElementById('progBar').style.width = Math.max(0, Math.min(100, pct)) + '%';
+  document.getElementById('progPct').textContent = Math.round(pct) + '%';
+  document.getElementById('progTxt').textContent = txt;
+}
+function progressoFim(depoisMs) { setTimeout(() => { document.getElementById('prog').hidden = true; }, depoisMs || 6000); }
+const mmss = ms => { const s = Math.round(ms / 1000); return s < 60 ? s + 's' : Math.floor(s / 60) + 'min ' + String(s % 60).padStart(2, '0') + 's'; };
+let ACOMPANHANDO = false;
+async function atualizarDoTotvs(soAcompanhar) {
+  if (ACOMPANHANDO) return; ACOMPANHANDO = true;
+  const ano = S.per.ano, mes = S.per.mes, chaveMes = `${ano}-${String(mes).padStart(2, '0')}`;
+  // peso de cada relatório na barra (Lentes e Cirurgias são as lentas)
+  const PESO = { consultas: 5, exames: 8, bloco: 5, pagos: 3, cirurgias_procedimentos: 40, lentes: 39 };
+  const ESPERA = { cirurgias_procedimentos: 240000, lentes: 240000 };   // tempo típico esperado (ms)
   try {
-    await apiGet(`/coletar?ano=${ano}&mes=${mes}`, 'POST');
-    const t0 = Date.now();
-    while (Date.now() - t0 < 20 * 60 * 1000) {
-      await new Promise(r => setTimeout(r, 4000));
+    if (!soAcompanhar) await apiGet(`/coletar?ano=${ano}&mes=${mes}`, 'POST');
+    progresso(1, `Buscando ${MESES[mes - 1]}/${ano} no Totvs…`);
+    const t0 = Date.now(); let atualAnt = null, tAtual = Date.now(), vistoRodando = false;
+    while (Date.now() - t0 < 25 * 60 * 1000) {
+      await new Promise(r => setTimeout(r, 3000));
       const j = await apiGet(`/status?ano=${ano}&mes=${mes}`); const c = j.coleta || {};
-      const feitos = (c.feitos || []).map(f => `${f.rel} ${f.linhas}`).join(', ');
-      status(`Buscando no Totvs ${String(mes).padStart(2, '0')}/${ano}… ${c.atual ? 'agora: ' + c.atual + ' · ' : ''}${feitos}`);
-      if (!c.rodando && c.periodo === `${ano}-${String(mes).padStart(2, '0')}`) {
-        if (c.erros && c.erros.length) alert('Alguns relatórios falharam no Totvs:\n' + c.erros.map(e => `${e.rel}: ${e.erro}`).join('\n') + '\n\nO resto foi atualizado.');
+      if (c.periodo === chaveMes && c.rodando) vistoRodando = true;
+      if (c.periodo !== chaveMes && !vistoRodando) { progresso(1, 'Aguardando a vez na fila do robô…'); continue; }
+      const prontos = [...(c.feitos || []).map(f => f.rel), ...(c.erros || []).map(e => e.rel)];
+      if (c.atual !== atualAnt) { atualAnt = c.atual; tAtual = Date.now(); }
+      let pct = prontos.reduce((t, r) => t + (PESO[r] || 0), 0);
+      if (c.rodando && c.atual) {   // avanço estimado dentro do relatório atual (no máximo 90% dele)
+        const dec = Date.now() - tAtual, esp = ESPERA[c.atual] || 15000;
+        pct += (PESO[c.atual] || 0) * Math.min(0.9, dec / esp);
+      }
+      const feitosTxt = (c.feitos || []).map(f => `${NOME_REL[f.rel] || f.rel} ✓`).join(' · ');
+      const agora = c.rodando && c.atual ? `Buscando ${NOME_REL[c.atual] || c.atual} (${mmss(Date.now() - tAtual)})` : '';
+      progresso(c.rodando ? Math.min(pct, 99) : 100, [agora, feitosTxt].filter(Boolean).join('  —  ') + `  · total ${mmss(Date.now() - t0)}`);
+      status(`Buscando no Totvs ${String(mes).padStart(2, '0')}/${ano}… ${agora}`);
+      if (!c.rodando && c.periodo === chaveMes) {
+        const erros = c.erros || [];
         if (S.per.ano === ano && S.per.mes === mes) await buscarApi(true);
+        progresso(100, erros.length ? `Concluído com ${erros.length} erro(s): ${erros.map(e => NOME_REL[e.rel] || e.rel).join(', ')}` : `Concluído em ${mmss(Date.now() - t0)} — dados carregados`, erros.length > 0);
+        if (erros.length) alert('Alguns relatórios falharam no Totvs:\n' + erros.map(e => `${NOME_REL[e.rel] || e.rel}: ${e.erro}`).join('\n') + '\n\nO resto foi atualizado.');
+        progressoFim(erros.length ? 20000 : 8000);
         return;
       }
     }
-    status('A coleta está demorando. Clique em "Carregar dados do mês" daqui a alguns minutos.');
-  } catch (x) { status('Erro na integração: ' + x.message); alert('Erro na integração: ' + x.message); }
+    progresso(99, 'A busca está demorando mais que o normal. O robô continua trabalhando: clique em "Carregar dados do mês" daqui a alguns minutos.', true);
+  } catch (x) { progresso(100, 'Erro: ' + x.message, true); progressoFim(20000); status('Erro na integração: ' + x.message); alert('Erro na integração: ' + x.message); }
+  finally { ACOMPANHANDO = false; }
 }
 /* ---------- backup e restauração (tudo que está guardado neste navegador) ---------- */
 async function fazerBackup() {
