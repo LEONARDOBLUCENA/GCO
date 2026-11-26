@@ -23,7 +23,8 @@ header .hbtn:hover{background:var(--light)}
 nav{display:flex;gap:4px;padding:8px 16px;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto;position:sticky;top:52px;z-index:9}
 nav button{border:0;background:transparent;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:14px;color:var(--muted);white-space:nowrap}
 nav button.on{background:var(--light);color:var(--navy);font-weight:bold}
-main{padding:16px;max-width:1920px;margin:0 auto}
+main{padding:16px;max-width:1480px;margin:0 auto}
+main:has(#t-dados.on),main:has(#t-pagos.on){max-width:1920px}
 section{display:none} section.on{display:block}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
 .card h2{font-size:15px;color:var(--navy);margin:0 0 10px}
@@ -46,6 +47,12 @@ section{display:none} section.on{display:block}
 .tw.dados td.item{white-space:normal;min-width:240px}
 .tw.dados thead th{position:sticky;top:0;z-index:2}.tw.dados tfoot td{position:sticky;bottom:0;background:#eef2f8;z-index:2}
 table{border-collapse:collapse;width:100%;font-size:13px}
+/* relatórios: tabela do tamanho do conteúdo, centralizada no cartão */
+table.rel{width:100%}
+table.rel td:first-child{width:34%;min-width:300px;white-space:normal}
+table.rel td.n{min-width:120px}
+table.rel td.n.pct,table.rel td.pct{min-width:56px}
+table.rel th{padding:7px 12px}
 th{background:var(--navy);color:#fff;padding:6px 8px;text-align:center;white-space:nowrap;font-weight:bold}
 th.sub{background:var(--blue)}
 td{padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
@@ -496,7 +503,7 @@ function renderMedicos() {
   const html = `
   <div class="card"><div class="row"><b>Área:</b><div class="chips" id="chipsArea">
     ${[['todas', 'Todas'], ...AREAS].map(([a, n]) => `<button data-a="${a}" class="${S.area === a ? 'on' : ''}">${n}</button>`).join('')}</div></div>
-  <div class="tw"><table>
+  <div class="tw"><table class="rel">
     <tr><th style="text-align:left">${S.area === 'todas' ? 'Todas as áreas' : AREAS.find(x => x[0] === S.area)[1]}</th>
       ${cols.map(m => `<th colspan="2">${m === '__TOTAL__' ? 'TOTAL' : esc(m)}</th>`).join('')}</tr>
     <tr class="prod"><td class="lab">(+) Produção bruta — caixa</td>${cols.map(m => `<td></td>${td(A[m].caixa)}`).join('')}</tr>
@@ -545,7 +552,7 @@ function renderAcerto() {
   const html = `<div class="kpis acms">${ms.map(m => kpiMed(m, c.acerto[m].total, rec(m), c.acerto[m].saldo)).join('')}
     ${kpiMed('TOTAL DOS MÉDICOS', sumC(m => c.acerto[m].total), sumC(rec), sumC(m => c.acerto[m].saldo))}</div>
   <div class="card"><h2>Acerto com os médicos — ${MESES[S.per.mes - 1]}/${S.per.ano} </h2>
-  <div class="tw"><table>
+  <div class="tw"><table class="rel">
     <tr><th style="text-align:left"></th>${ms.map(m => `<th>${esc(m)}</th>`).join('')}<th>TOTAL</th></tr>
     <tr class="sec"><td colspan="${ms.length + 2}">1. REPASSE DEVIDO POR CONVÊNIO (executor + solicitante + máquina)</td></tr>
     ${P.gruposOrdem.map(g => `<tr><td class="lab">${g}</td>${ms.map(m => td(c.acerto[m].porGrupo[g])).join('')}${td(sumC(m => c.acerto[m].porGrupo[g]))}</tr>`).join('')}
@@ -579,7 +586,7 @@ function renderClinica() {
   const T = (lab, v, cls = '') => `<tr class="${cls}"><td class="lab">${lab}</td>${cols.map(() => '<td></td>').join('')}${td(v)}<td class="n pct">${k.bruto ? fmtP(v / k.bruto) : ''}</td></tr>`;
   const sec = t => `<tr class="sec"><td colspan="${cols.length + 3}">${t}</td></tr>`;
   const g = k.porGrupoPago;
-  const html = `<div class="card"><h2>Resultado da clínica — ${MESES[S.per.mes - 1]}/${S.per.ano} </h2><div class="tw"><table>
+  const html = `<div class="card"><h2>Resultado da clínica — ${MESES[S.per.mes - 1]}/${S.per.ano} </h2><div class="tw"><table class="rel">
     <tr><th style="text-align:left"></th>${cols.map(([, n]) => `<th>${n}</th>`).join('')}<th>TOTAL</th><th>% bruto</th></tr>
     ${sec('1. FATURAMENTO BRUTO')}
     ${L('Caixa (particular e coparticipação)', o => o.caixa)}${L('Convênio', o => o.conv)}${L('(=) BRUTO TOTAL', o => o.bruto, 'tot')}
